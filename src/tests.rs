@@ -47,7 +47,9 @@ macro_rules! assert_pos_relative_eq {
         let left: $crate::Positive = $left;
         let right: $crate::Positive = $right;
         let epsilon: $crate::Positive = $epsilon;
-        let abs_diff: $crate::Positive = (left.to_f64() - right.to_f64()).abs().into();
+        let abs_diff: $crate::Positive =
+            $crate::Positive::new((left.to_f64() - right.to_f64()).abs())
+                .expect("abs_diff must be positive");
         let max_abs = left.max(right);
 
         if left == $crate::Positive::ZERO || right == $crate::Positive::ZERO {

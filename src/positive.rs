@@ -391,7 +391,7 @@ impl Positive {
     /// Returns the smallest integer greater than or equal to the value.
     #[must_use]
     pub fn ceiling(&self) -> Positive {
-        Positive::from(self.to_dec().ceil())
+        Positive(self.to_dec().ceil())
     }
 
     /// Computes the base-10 logarithm of the value.
@@ -466,6 +466,29 @@ impl Positive {
         }
         let remainder = self.0 % other.0;
         remainder.abs() < EPSILON
+    }
+
+    /// Creates a new `Positive` value without checking if the value is non-negative.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `value >= 0`. Using this with a negative value
+    /// will violate the invariant of the `Positive` type and may cause undefined
+    /// behavior in code that relies on the positivity guarantee.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use positive::Positive;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// // SAFETY: We know 5.0 is positive
+    /// let value = unsafe { Positive::new_unchecked(dec!(5.0)) };
+    /// assert_eq!(value.to_f64(), 5.0);
+    /// ```
+    #[must_use]
+    pub const unsafe fn new_unchecked(value: Decimal) -> Self {
+        Positive(value)
     }
 }
 
@@ -568,27 +591,81 @@ impl FromStr for Positive {
     }
 }
 
-impl From<f64> for Positive {
-    fn from(value: f64) -> Self {
-        Positive::new(value).expect("Value must be positive")
+impl TryFrom<f64> for Positive {
+    type Error = PositiveError;
+
+    /// Attempts to convert an f64 to a Positive value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PositiveError` if the value is negative, NaN, or cannot be converted to Decimal.
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        Positive::new(value)
     }
 }
 
-impl From<usize> for Positive {
-    fn from(value: usize) -> Self {
-        Positive::new(value as f64).expect("Value must be positive")
+impl TryFrom<usize> for Positive {
+    type Error = PositiveError;
+
+    /// Attempts to convert a usize to a Positive value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PositiveError` if the value cannot be converted to Decimal.
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        Positive::new(value as f64)
     }
 }
 
-impl From<Decimal> for Positive {
-    fn from(value: Decimal) -> Self {
-        Positive::new_decimal(value).expect("Value must be positive")
+impl TryFrom<Decimal> for Positive {
+    type Error = PositiveError;
+
+    /// Attempts to convert a Decimal to a Positive value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PositiveError` if the value is negative.
+    fn try_from(value: Decimal) -> Result<Self, Self::Error> {
+        Positive::new_decimal(value)
     }
 }
 
-impl From<&Decimal> for Positive {
-    fn from(value: &Decimal) -> Self {
-        Positive::new_decimal(*value).expect("Value must be positive")
+impl TryFrom<&Decimal> for Positive {
+    type Error = PositiveError;
+
+    /// Attempts to convert a &Decimal to a Positive value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PositiveError` if the value is negative.
+    fn try_from(value: &Decimal) -> Result<Self, Self::Error> {
+        Positive::new_decimal(*value)
+    }
+}
+
+impl TryFrom<i64> for Positive {
+    type Error = PositiveError;
+
+    /// Attempts to convert an i64 to a Positive value.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PositiveError` if the value is negative.
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        Positive::new_decimal(Decimal::from(value))
+    }
+}
+
+impl TryFrom<u64> for Positive {
+    type Error = PositiveError;
+
+    /// Attempts to convert a u64 to a Positive value.
+    ///
+    /// # Errors
+    ///
+    /// This conversion is infallible for u64 since all values are non-negative.
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        Positive::new_decimal(Decimal::from(value))
     }
 }
 
@@ -601,35 +678,35 @@ impl From<&Positive> for Positive {
 impl Mul<f64> for Positive {
     type Output = Positive;
     fn mul(self, rhs: f64) -> Positive {
-        (self.to_f64() * rhs).into()
+        Positive::new(self.to_f64() * rhs).expect("Multiplication result must be positive")
     }
 }
 
 impl Div<f64> for Positive {
     type Output = Positive;
     fn div(self, rhs: f64) -> Positive {
-        (self.to_f64() / rhs).into()
+        Positive::new(self.to_f64() / rhs).expect("Division result must be positive")
     }
 }
 
 impl Div<f64> for &Positive {
     type Output = Positive;
     fn div(self, rhs: f64) -> Positive {
-        (self.to_f64() / rhs).into()
+        Positive::new(self.to_f64() / rhs).expect("Division result must be positive")
     }
 }
 
 impl Sub<f64> for Positive {
     type Output = Positive;
     fn sub(self, rhs: f64) -> Self::Output {
-        (self.to_f64() - rhs).into()
+        Positive::new(self.to_f64() - rhs).expect("Subtraction result must be positive")
     }
 }
 
 impl Add<f64> for Positive {
     type Output = Positive;
     fn add(self, rhs: f64) -> Self::Output {
-        (self.to_f64() + rhs).into()
+        Positive::new(self.to_f64() + rhs).expect("Addition result must be positive")
     }
 }
 
@@ -829,7 +906,7 @@ impl Add<Decimal> for Positive {
 impl Add<&Decimal> for Positive {
     type Output = Positive;
     fn add(self, rhs: &Decimal) -> Self::Output {
-        (self.0 + rhs).into()
+        Positive::new_decimal(self.0 + rhs).expect("Addition result must be positive")
     }
 }
 
@@ -875,7 +952,7 @@ impl Div<Decimal> for Positive {
 impl Div<&Decimal> for Positive {
     type Output = Positive;
     fn div(self, rhs: &Decimal) -> Self::Output {
-        (self.0 / rhs).into()
+        Positive::new_decimal(self.0 / rhs).expect("Division result must be positive")
     }
 }
 

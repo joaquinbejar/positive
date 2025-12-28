@@ -1,6 +1,6 @@
 [package]
 name = "positive"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 authors = ["Joaquín Béjar García <jb@taunais.com>"]
 description = "A type-safe wrapper for guaranteed positive decimal values"

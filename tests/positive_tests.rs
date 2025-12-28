@@ -735,22 +735,22 @@ fn test_f64_add_positive() {
 }
 
 #[test]
-fn test_from_usize() {
-    let p: Positive = 42usize.into();
+fn test_try_from_usize() {
+    let p: Positive = 42usize.try_into().unwrap();
     assert_eq!(p.to_f64(), 42.0);
 }
 
 #[test]
-fn test_from_decimal() {
+fn test_try_from_decimal() {
     let d = dec!(42.5);
-    let p: Positive = d.into();
+    let p: Positive = d.try_into().unwrap();
     assert_eq!(p.to_f64(), 42.5);
 }
 
 #[test]
-fn test_from_ref_decimal() {
+fn test_try_from_ref_decimal() {
     let d = dec!(42.5);
-    let p: Positive = (&d).into();
+    let p: Positive = Positive::new_decimal(d).unwrap();
     assert_eq!(p.to_f64(), 42.5);
 }
 
