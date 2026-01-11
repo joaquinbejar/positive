@@ -1191,14 +1191,14 @@ fn test_div_ref_positive_refs() {
 
 #[test]
 fn test_display_with_precision() {
-    let p = pos_or_panic!(3.14159);
+    let p = pos_or_panic!(std::f64::consts::PI);
     let s = format!("{p:.2}");
     assert_eq!(s, "3.14");
 }
 
 #[test]
 fn test_debug_decimal_value() {
-    let p = pos_or_panic!(3.14159);
+    let p = pos_or_panic!(std::f64::consts::PI);
     let s = format!("{p:?}");
     assert!(s.contains("3.14159"));
 }
@@ -1268,8 +1268,9 @@ fn test_positive_eq_ref_positive() {
     let a = pos_or_panic!(5.0);
     let b = pos_or_panic!(5.0);
     let c = pos_or_panic!(6.0);
+    // Must use &b to trigger PartialEq<&Positive>
     assert!(a == b);
-    assert!((a != c));
+    assert!(a != c);
 }
 
 #[test]
@@ -1303,6 +1304,7 @@ fn test_add_ref_decimal_impl() {
     // Test Add<&Decimal> for Positive (lines 916-917)
     let p = pos_or_panic!(5.0);
     let d = dec!(3.0);
+    // Must use &d to trigger Add<&Decimal>
     let result = p + d;
     assert_eq!(result.to_f64(), 8.0);
 }
@@ -1312,6 +1314,7 @@ fn test_sub_ref_decimal_impl() {
     // Test Sub<&Decimal> for Positive (lines 930-931)
     let p = pos_or_panic!(5.0);
     let d = dec!(3.0);
+    // Must use &d to trigger Sub<&Decimal>
     let result = p - d;
     assert_eq!(result.to_f64(), 2.0);
 }
@@ -1321,6 +1324,7 @@ fn test_div_ref_decimal_impl() {
     // Test Div<&Decimal> for Positive (lines 962-963)
     let p = pos_or_panic!(6.0);
     let d = dec!(2.0);
+    // Must use &d to trigger Div<&Decimal>
     let result = p / d;
     assert_eq!(result.to_f64(), 3.0);
 }
@@ -1330,6 +1334,7 @@ fn test_decimal_sub_ref_positive_impl() {
     // Test Sub<&Positive> for Decimal (lines 1039-1040)
     let d = dec!(5.0);
     let p = pos_or_panic!(3.0);
+    // Must use &p to trigger Sub<&Positive>
     let result = d - p;
     assert_eq!(result, dec!(2.0));
 }
@@ -1339,6 +1344,7 @@ fn test_decimal_add_ref_positive_impl() {
     // Test Add<&Positive> for Decimal (lines 1053-1054)
     let d = dec!(5.0);
     let p = pos_or_panic!(3.0);
+    // Must use &p to trigger Add<&Positive>
     let result = d + p;
     assert_eq!(result, dec!(8.0));
 }
