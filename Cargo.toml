@@ -31,3 +31,7 @@ non-zero = []
 [[bench]]
 name = "arith"
 harness = false
+
+[[bench]]
+name = "conversion"
+harness = false
