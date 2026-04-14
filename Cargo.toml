@@ -35,3 +35,7 @@ harness = false
 [[bench]]
 name = "conversion"
 harness = false
+
+[[bench]]
+name = "format_serde"
+harness = false
