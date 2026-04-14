@@ -19,7 +19,7 @@ fn bench_from_primitive(c: &mut Criterion) {
     let d = dec!(9.99);
     let mut g = c.benchmark_group("conv/from_primitive");
     g.bench_function("new_f64", |bencher| {
-        bencher.iter(|| black_box(Positive::new(black_box(3.14_f64))))
+        bencher.iter(|| black_box(Positive::new(black_box(3.25_f64))))
     });
     g.bench_function("try_from_i64", |bencher| {
         bencher.iter(|| black_box(Positive::try_from(black_box(42_i64))))
@@ -28,7 +28,7 @@ fn bench_from_primitive(c: &mut Criterion) {
         bencher.iter(|| black_box(Positive::try_from(black_box(42_u64))))
     });
     g.bench_function("try_from_f64", |bencher| {
-        bencher.iter(|| black_box(Positive::try_from(black_box(3.14_f64))))
+        bencher.iter(|| black_box(Positive::try_from(black_box(3.25_f64))))
     });
     g.bench_function("try_from_usize", |bencher| {
         bencher.iter(|| black_box(Positive::try_from(black_box(100_usize))))

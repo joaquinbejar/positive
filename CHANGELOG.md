@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-04-14
+
+### Fixed
+
+- Replace `3.14_f64` literal in `benches/conversion.rs` with `3.25_f64` so
+  CI lint passes under clippy 1.94.0 (`approx_constant` is deny-by-default
+  and flagged the literal as an approximation of `f64::consts::PI`).
+
 ## [0.4.1] - 2026-04-14
 
 ### Added
