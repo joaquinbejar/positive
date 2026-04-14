@@ -1,0 +1,27 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- Benchmark harness based on [Criterion](https://docs.rs/criterion) with three
+  bench targets:
+  - `benches/arith.rs` — `Positive`/`Positive` and `Positive`/`f64` operators,
+    math functions (`sqrt`, `ln`, `exp`, `log10`), `round_to`, `clamp`,
+    `checked_sub`/`sub_or_zero`/`saturating_sub`, `checked_div`,
+    `is_multiple_of`.
+  - `benches/conversion.rs` — `Positive::new`, `TryFrom` conversions,
+    `Positive`-to-primitive conversions, and `Positive::from_str`.
+  - `benches/format_serde.rs` — `Display`, `Debug`, `format_fixed_places`,
+    and `serde` JSON round-trip across representative inputs (including
+    `Positive::INFINITY`).
+- Frozen performance baseline `v0.4.0` generated via
+  `cargo bench -- --save-baseline v0.4.0`. Subsequent performance phases
+  compare against this baseline with
+  `cargo bench -- --baseline v0.4.0`. The baseline artefacts live under
+  `target/criterion/` and are not committed to the repository.
