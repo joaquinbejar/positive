@@ -219,18 +219,21 @@ impl Positive {
     }
 
     /// Returns the inner `Decimal` value.
+    #[inline]
     #[must_use]
     pub fn value(&self) -> Decimal {
         self.0
     }
 
     /// Returns the inner `Decimal` value (alias for `value()`).
+    #[inline]
     #[must_use]
     pub fn to_dec(&self) -> Decimal {
         self.0
     }
 
     /// Returns the inner `Decimal` ref.
+    #[inline]
     #[must_use]
     pub fn to_dec_ref(&self) -> &Decimal {
         &self.0
@@ -250,12 +253,14 @@ impl Positive {
     }
 
     /// Converts the value to f64, returning None if conversion fails.
+    #[inline]
     #[must_use]
     pub fn to_f64_checked(&self) -> Option<f64> {
         self.0.to_f64()
     }
 
     /// Converts the value to f64 with lossy conversion (returns 0.0 on failure).
+    #[inline]
     #[must_use]
     pub fn to_f64_lossy(&self) -> f64 {
         self.0.to_f64().unwrap_or(0.0)
@@ -403,12 +408,14 @@ impl Positive {
     }
 
     /// Calculates the natural logarithm of the value.
+    #[inline]
     #[must_use]
     pub fn ln(&self) -> Positive {
         Positive(self.0.ln())
     }
 
     /// Rounds the value to a specified number of decimal places.
+    #[inline]
     #[must_use]
     pub fn round_to(&self, decimal_places: u32) -> Positive {
         Positive(self.0.round_dp(decimal_places))
@@ -422,6 +429,7 @@ impl Positive {
     }
 
     /// Calculates the exponential function e^x for this value.
+    #[inline]
     #[must_use]
     pub fn exp(&self) -> Positive {
         Positive(self.0.exp())
@@ -440,18 +448,21 @@ impl Positive {
     }
 
     /// Checks if the value is exactly zero.
+    #[inline]
     #[must_use]
     pub fn is_zero(&self) -> bool {
         self.0.is_zero()
     }
 
     /// Returns the smallest integer greater than or equal to the value.
+    #[inline]
     #[must_use]
     pub fn ceiling(&self) -> Positive {
         Positive(self.to_dec().ceil())
     }
 
     /// Computes the base-10 logarithm of the value.
+    #[inline]
     #[must_use]
     pub fn log10(&self) -> Positive {
         Positive(self.0.log10())
@@ -551,6 +562,7 @@ impl Positive {
     /// let value = unsafe { Positive::new_unchecked(dec!(5.0)) };
     /// assert_eq!(value.to_f64(), 5.0);
     /// ```
+    #[inline]
     #[must_use]
     pub const unsafe fn new_unchecked(value: Decimal) -> Self {
         Positive(value)
@@ -560,6 +572,7 @@ impl Positive {
     /// to define `Positive` constants in `const` context. The invariant is
     /// enforced by the callers: every constant in `crate::constants` is a
     /// strictly non-negative literal (or `>0` under the `non-zero` feature).
+    #[inline]
     #[must_use]
     pub(crate) const fn from_decimal_const(value: Decimal) -> Self {
         Positive(value)
@@ -567,60 +580,70 @@ impl Positive {
 }
 
 impl From<Positive> for Decimal {
+    #[inline]
     fn from(value: Positive) -> Self {
         value.0
     }
 }
 
 impl PartialEq<&Positive> for Positive {
+    #[inline]
     fn eq(&self, other: &&Positive) -> bool {
         self == *other
     }
 }
 
 impl From<Positive> for u64 {
+    #[inline]
     fn from(pos_u64: Positive) -> Self {
         pos_u64.0.to_u64().unwrap_or(0)
     }
 }
 
 impl From<&Positive> for f64 {
+    #[inline]
     fn from(value: &Positive) -> Self {
         value.0.to_f64().unwrap_or(0.0)
     }
 }
 
 impl From<Positive> for f64 {
+    #[inline]
     fn from(value: Positive) -> Self {
         value.0.to_f64().unwrap_or(0.0)
     }
 }
 
 impl From<Positive> for usize {
+    #[inline]
     fn from(value: Positive) -> Self {
         value.0.to_f64().unwrap_or(0.0) as usize
     }
 }
 
 impl PartialEq<&Positive> for f64 {
+    #[inline]
     fn eq(&self, other: &&Positive) -> bool {
         self == &other.0.to_f64().unwrap_or(0.0)
     }
 }
 
 impl PartialOrd<&Positive> for f64 {
+    #[inline]
     fn partial_cmp(&self, other: &&Positive) -> Option<Ordering> {
         self.partial_cmp(&other.0.to_f64().unwrap_or(0.0))
     }
 }
 
 impl PartialEq<Positive> for f64 {
+    #[inline]
     fn eq(&self, other: &Positive) -> bool {
         self == &other.0.to_f64().unwrap_or(0.0)
     }
 }
 
 impl PartialOrd<Positive> for f64 {
+    #[inline]
     fn partial_cmp(&self, other: &Positive) -> Option<Ordering> {
         self.partial_cmp(&other.0.to_f64().unwrap_or(0.0))
     }
@@ -628,6 +651,7 @@ impl PartialOrd<Positive> for f64 {
 
 impl Mul<Positive> for f64 {
     type Output = f64;
+    #[inline]
     fn mul(self, rhs: Positive) -> Self::Output {
         self * rhs.to_f64()
     }
@@ -635,6 +659,7 @@ impl Mul<Positive> for f64 {
 
 impl Div<Positive> for f64 {
     type Output = f64;
+    #[inline]
     fn div(self, rhs: Positive) -> Self::Output {
         self / rhs.to_f64()
     }
@@ -642,6 +667,7 @@ impl Div<Positive> for f64 {
 
 impl Sub<Positive> for f64 {
     type Output = f64;
+    #[inline]
     fn sub(self, rhs: Positive) -> Self::Output {
         self - rhs.to_f64()
     }
@@ -649,6 +675,7 @@ impl Sub<Positive> for f64 {
 
 impl Add<Positive> for f64 {
     type Output = f64;
+    #[inline]
     fn add(self, rhs: Positive) -> Self::Output {
         self + rhs.to_f64()
     }
@@ -744,6 +771,7 @@ impl TryFrom<u64> for Positive {
 }
 
 impl From<&Positive> for Positive {
+    #[inline]
     fn from(value: &Positive) -> Self {
         Positive(value.0)
     }
@@ -751,6 +779,7 @@ impl From<&Positive> for Positive {
 
 impl Mul<f64> for Positive {
     type Output = Positive;
+    #[inline]
     fn mul(self, rhs: f64) -> Positive {
         Positive::new(self.to_f64() * rhs).expect("Multiplication result must be positive")
     }
@@ -758,6 +787,7 @@ impl Mul<f64> for Positive {
 
 impl Div<f64> for Positive {
     type Output = Positive;
+    #[inline]
     fn div(self, rhs: f64) -> Positive {
         Positive::new(self.to_f64() / rhs).expect("Division result must be positive")
     }
@@ -765,6 +795,7 @@ impl Div<f64> for Positive {
 
 impl Div<f64> for &Positive {
     type Output = Positive;
+    #[inline]
     fn div(self, rhs: f64) -> Positive {
         Positive::new(self.to_f64() / rhs).expect("Division result must be positive")
     }
@@ -772,6 +803,7 @@ impl Div<f64> for &Positive {
 
 impl Sub<f64> for Positive {
     type Output = Positive;
+    #[inline]
     fn sub(self, rhs: f64) -> Self::Output {
         Positive::new(self.to_f64() - rhs).expect("Subtraction result must be positive")
     }
@@ -779,30 +811,35 @@ impl Sub<f64> for Positive {
 
 impl Add<f64> for Positive {
     type Output = Positive;
+    #[inline]
     fn add(self, rhs: f64) -> Self::Output {
         Positive::new(self.to_f64() + rhs).expect("Addition result must be positive")
     }
 }
 
 impl PartialOrd<f64> for Positive {
+    #[inline]
     fn partial_cmp(&self, other: &f64) -> Option<Ordering> {
         self.0.to_f64().unwrap_or(0.0).partial_cmp(other)
     }
 }
 
 impl PartialEq<f64> for &Positive {
+    #[inline]
     fn eq(&self, other: &f64) -> bool {
         self.0.to_f64().unwrap_or(0.0) == *other
     }
 }
 
 impl PartialOrd<f64> for &Positive {
+    #[inline]
     fn partial_cmp(&self, other: &f64) -> Option<Ordering> {
         self.0.to_f64().unwrap_or(0.0).partial_cmp(other)
     }
 }
 
 impl PartialEq<f64> for Positive {
+    #[inline]
     fn eq(&self, other: &f64) -> bool {
         self.to_f64() == *other
     }
@@ -945,6 +982,7 @@ impl<'de> Deserialize<'de> for Positive {
 
 impl Add for Positive {
     type Output = Positive;
+    #[inline]
     fn add(self, other: Positive) -> Positive {
         Positive(self.0 + other.0)
     }
@@ -952,6 +990,7 @@ impl Add for Positive {
 
 impl Sub for Positive {
     type Output = Positive;
+    #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
         let result = self.0 - rhs.0;
         if result < Decimal::ZERO {
@@ -964,6 +1003,7 @@ impl Sub for Positive {
 
 impl Div for Positive {
     type Output = Positive;
+    #[inline]
     fn div(self, other: Positive) -> Self::Output {
         Positive(self.0 / other.0)
     }
@@ -971,6 +1011,7 @@ impl Div for Positive {
 
 impl Div for &Positive {
     type Output = Positive;
+    #[inline]
     fn div(self, other: &Positive) -> Self::Output {
         Positive(self.0 / other.0)
     }
@@ -978,6 +1019,7 @@ impl Div for &Positive {
 
 impl Add<Decimal> for Positive {
     type Output = Positive;
+    #[inline]
     fn add(self, rhs: Decimal) -> Positive {
         Positive(self.0 + rhs)
     }
@@ -985,6 +1027,7 @@ impl Add<Decimal> for Positive {
 
 impl Add<&Decimal> for Positive {
     type Output = Positive;
+    #[inline]
     fn add(self, rhs: &Decimal) -> Self::Output {
         Positive::new_decimal(self.0 + rhs).expect("Addition result must be positive")
     }
@@ -992,6 +1035,7 @@ impl Add<&Decimal> for Positive {
 
 impl Sub<Decimal> for Positive {
     type Output = Positive;
+    #[inline]
     fn sub(self, rhs: Decimal) -> Positive {
         Positive::new_decimal(self.0 - rhs).expect("Resulting value must be positive")
     }
@@ -999,24 +1043,28 @@ impl Sub<Decimal> for Positive {
 
 impl Sub<&Decimal> for Positive {
     type Output = Positive;
+    #[inline]
     fn sub(self, rhs: &Decimal) -> Self::Output {
         Positive::new_decimal(self.0 - rhs).expect("Resulting value must be positive")
     }
 }
 
 impl AddAssign for Positive {
+    #[inline]
     fn add_assign(&mut self, other: Positive) {
         self.0 += other.0;
     }
 }
 
 impl AddAssign<Decimal> for Positive {
+    #[inline]
     fn add_assign(&mut self, rhs: Decimal) {
         self.0 += rhs;
     }
 }
 
 impl MulAssign<Decimal> for Positive {
+    #[inline]
     fn mul_assign(&mut self, rhs: Decimal) {
         self.0 *= rhs;
     }
@@ -1024,6 +1072,7 @@ impl MulAssign<Decimal> for Positive {
 
 impl Div<Decimal> for Positive {
     type Output = Positive;
+    #[inline]
     fn div(self, rhs: Decimal) -> Positive {
         Positive(self.0 / rhs)
     }
@@ -1031,12 +1080,14 @@ impl Div<Decimal> for Positive {
 
 impl Div<&Decimal> for Positive {
     type Output = Positive;
+    #[inline]
     fn div(self, rhs: &Decimal) -> Self::Output {
         Positive::new_decimal(self.0 / rhs).expect("Division result must be positive")
     }
 }
 
 impl PartialOrd<Decimal> for Positive {
+    #[inline]
     fn partial_cmp(&self, other: &Decimal) -> Option<Ordering> {
         self.0.partial_cmp(other)
     }
@@ -1044,6 +1095,7 @@ impl PartialOrd<Decimal> for Positive {
 
 impl Neg for Positive {
     type Output = Self;
+    #[inline]
     fn neg(self) -> Self::Output {
         panic!("Cannot negate a Positive value!");
     }
@@ -1051,6 +1103,7 @@ impl Neg for Positive {
 
 impl Mul for Positive {
     type Output = Positive;
+    #[inline]
     fn mul(self, other: Positive) -> Positive {
         Positive(self.0 * other.0)
     }
@@ -1058,6 +1111,7 @@ impl Mul for Positive {
 
 impl Mul<Decimal> for Positive {
     type Output = Positive;
+    #[inline]
     fn mul(self, rhs: Decimal) -> Positive {
         Positive(self.0 * rhs)
     }
@@ -1065,6 +1119,7 @@ impl Mul<Decimal> for Positive {
 
 impl Mul<Positive> for Decimal {
     type Output = Decimal;
+    #[inline]
     fn mul(self, rhs: Positive) -> Decimal {
         self * rhs.0
     }
@@ -1072,6 +1127,7 @@ impl Mul<Positive> for Decimal {
 
 impl Div<Positive> for Decimal {
     type Output = Decimal;
+    #[inline]
     fn div(self, rhs: Positive) -> Decimal {
         self / rhs.0
     }
@@ -1079,6 +1135,7 @@ impl Div<Positive> for Decimal {
 
 impl Sub<Positive> for Decimal {
     type Output = Decimal;
+    #[inline]
     fn sub(self, rhs: Positive) -> Decimal {
         self - rhs.0
     }
@@ -1086,6 +1143,7 @@ impl Sub<Positive> for Decimal {
 
 impl Sub<&Positive> for Decimal {
     type Output = Decimal;
+    #[inline]
     fn sub(self, rhs: &Positive) -> Decimal {
         self - rhs.0
     }
@@ -1093,6 +1151,7 @@ impl Sub<&Positive> for Decimal {
 
 impl Add<Positive> for Decimal {
     type Output = Decimal;
+    #[inline]
     fn add(self, rhs: Positive) -> Decimal {
         self + rhs.0
     }
@@ -1100,42 +1159,49 @@ impl Add<Positive> for Decimal {
 
 impl Add<&Positive> for Decimal {
     type Output = Decimal;
+    #[inline]
     fn add(self, rhs: &Positive) -> Decimal {
         self + rhs.0
     }
 }
 
 impl std::ops::AddAssign<Positive> for Decimal {
+    #[inline]
     fn add_assign(&mut self, rhs: Positive) {
         *self += rhs.0;
     }
 }
 
 impl std::ops::AddAssign<&Positive> for Decimal {
+    #[inline]
     fn add_assign(&mut self, rhs: &Positive) {
         *self += rhs.0;
     }
 }
 
 impl std::ops::MulAssign<Positive> for Decimal {
+    #[inline]
     fn mul_assign(&mut self, rhs: Positive) {
         *self *= rhs.0;
     }
 }
 
 impl std::ops::MulAssign<&Positive> for Decimal {
+    #[inline]
     fn mul_assign(&mut self, rhs: &Positive) {
         *self *= rhs.0;
     }
 }
 
 impl PartialEq<Positive> for Decimal {
+    #[inline]
     fn eq(&self, other: &Positive) -> bool {
         *self == other.0
     }
 }
 
 impl From<&Positive> for Decimal {
+    #[inline]
     fn from(pos: &Positive) -> Self {
         pos.0
     }

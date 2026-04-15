@@ -24,6 +24,12 @@ not yet finalised; do not rely on any intermediate state.
 - `#[cold] #[inline(never)]` on every `PositiveError` constructor and on
   the `From<&str>` / `From<String>` impls (#13). Keeps error-formatting
   code out of hot call sites.
+- `#[inline]` on every small hot-path helper and trait-impl body in
+  `Positive` (#14): `value`, `to_dec`, `to_dec_ref`, `to_f64_*`, `is_zero`,
+  `round_to`, `ln`, `exp`, `log10`, `ceiling`, `new_unchecked`,
+  `from_decimal_const`, every `From`/`Into`/`PartialEq`/`PartialOrd`, and
+  every `Add`/`Sub`/`Mul`/`Div`/`AddAssign`/`MulAssign`/`Neg` impl for
+  `Positive` (both sides).
 
 ### Changed
 
