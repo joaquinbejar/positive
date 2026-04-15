@@ -1123,6 +1123,16 @@ impl PartialEq<Decimal> for Positive {
     }
 }
 
+// NOTE (#26): `#[serde(transparent)]` would delegate to `Decimal`'s
+// default `Serialize`/`Deserialize`, which emits a JSON string (e.g.
+// `"12.345"`). The manual impls below preserve a long-standing,
+// downstream-visible JSON contract:
+//   - `Positive::INFINITY` serialises to the literal `f64::MAX`.
+//   - integer-valued `Positive`s serialise as JSON integers (`42`).
+//   - fractional `Positive`s serialise as JSON numbers (`12.345`).
+// Switching to `#[serde(transparent)]` would change the wire format
+// and is therefore deferred. Duplicated validation inside the
+// deserialiser is removed separately in #27.
 impl Serialize for Positive {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
