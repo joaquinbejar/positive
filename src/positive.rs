@@ -185,6 +185,7 @@ impl Positive {
     ///
     /// Without the `non-zero` feature, values >= 0 are accepted.
     /// With the `non-zero` feature, only values > 0 are accepted.
+    #[must_use = "constructor returns a Result; ignoring the Positive discards a validated invariant"]
     pub fn new(value: f64) -> Result<Self, PositiveError> {
         let dec = Decimal::from_f64(value);
         match dec {
@@ -206,6 +207,7 @@ impl Positive {
     ///
     /// Without the `non-zero` feature, values >= 0 are accepted.
     /// With the `non-zero` feature, only values > 0 are accepted.
+    #[must_use = "constructor returns a Result; ignoring the Positive discards a validated invariant"]
     pub fn new_decimal(value: Decimal) -> Result<Self, PositiveError> {
         if is_valid_positive_value(value) {
             Ok(Positive(value))
@@ -493,6 +495,7 @@ impl Positive {
     }
 
     /// Checked subtraction that returns Result instead of panicking.
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the overflow/underflow error"]
     pub fn checked_sub(&self, rhs: &Self) -> Result<Self, PositiveError> {
         Positive::new_decimal(self.0 - rhs.0)
     }
@@ -512,6 +515,7 @@ impl Positive {
     }
 
     /// Checked division that returns Result instead of panicking.
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the division-by-zero error"]
     pub fn checked_div(&self, rhs: &Self) -> Result<Self, PositiveError> {
         if rhs.is_zero() {
             Err(PositiveError::arithmetic_error(
