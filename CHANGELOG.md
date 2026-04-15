@@ -48,6 +48,11 @@ not yet finalised; do not rely on any intermediate state.
   arithmetic or ad-hoc `panic!`. Overflow and invariant violations
   surface via `overflow_panic` / `invariant_panic` with uniform
   messages. Test panic expectations updated accordingly.
+- `Positive`⇄`Decimal` operators (`Add`, `Sub`, `Mul`, `Div` for both
+  owned and `&Decimal` operands on both sides, plus `AddAssign`,
+  `MulAssign`) now also route through `Decimal::checked_*` (#20). For
+  `Positive`-returning ops the invariant is re-checked; for
+  `Decimal`-returning ops only overflow is guarded.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
