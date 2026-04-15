@@ -102,6 +102,10 @@ not yet finalised; do not rely on any intermediate state.
   Replaces the lossy `f64`-based path. `Positive::is_multiple(f64)` is
   now `#[deprecated(since = "0.5.0")]`; existing callers continue to
   work but emit a deprecation warning.
+- `Positive::is_multiple_of(&Positive)` now uses `Decimal::checked_rem`
+  (#30) so pathological inputs that could previously panic under raw
+  `%` now return `false` instead. Observable behaviour for normal
+  inputs is unchanged.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
