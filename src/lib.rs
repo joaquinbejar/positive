@@ -255,7 +255,7 @@ mod positive;
 pub mod prelude;
 mod tests;
 pub use error::{PositiveError, PositiveResult};
-pub use positive::{Positive, is_positive, is_valid_positive_value};
+pub use positive::{DIV_ROUNDING_STRATEGY, Positive, is_positive, is_valid_positive_value};
 
 /// Re-export rust_decimal for convenience.
 pub use rust_decimal::Decimal;

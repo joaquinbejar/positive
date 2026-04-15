@@ -1502,32 +1502,33 @@ fn test_checked_div_with_strategy_ok() {
     assert_eq!(r.to_dec(), dec!(3.5));
 }
 
+#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_checked_div_with_strategy_zero_divisor() {
     use rust_decimal_macros::dec;
     let a = positive::Positive::new_decimal(dec!(7)).expect("ok");
-    let b = positive::Positive::new_decimal(dec!(0)).unwrap_or(positive::Positive::ONE);
-    // Under default features b may be zero; under non-zero it's ONE.
-    #[cfg(not(feature = "non-zero"))]
-    {
-        let b = positive::Positive::new_decimal(dec!(0)).expect("ok");
-        let err = a
-            .checked_div_with_strategy(&b, rust_decimal::RoundingStrategy::ToZero)
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            positive::PositiveError::ArithmeticError { .. }
-        ));
-    }
-    #[cfg(feature = "non-zero")]
-    {
-        // Non-zero cannot construct zero; this branch is not reachable
-        // with a real zero, so we just sanity-check the positive path.
-        let r = a
-            .checked_div_with_strategy(&b, rust_decimal::RoundingStrategy::ToZero)
-            .expect("ok");
-        assert_eq!(r.to_dec(), dec!(7));
-    }
+    let b = positive::Positive::new_decimal(dec!(0)).expect("ok");
+    let err = a
+        .checked_div_with_strategy(&b, rust_decimal::RoundingStrategy::ToZero)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        positive::PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[cfg(feature = "non-zero")]
+#[test]
+fn test_checked_div_with_strategy_positive_divisor() {
+    use rust_decimal_macros::dec;
+    // Under `non-zero` a zero divisor cannot be constructed; exercise
+    // the non-zero happy path instead.
+    let a = positive::Positive::new_decimal(dec!(7)).expect("ok");
+    let b = positive::Positive::ONE;
+    let r = a
+        .checked_div_with_strategy(&b, rust_decimal::RoundingStrategy::ToZero)
+        .expect("ok");
+    assert_eq!(r.to_dec(), dec!(7));
 }
 
 #[test]
