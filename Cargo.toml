@@ -39,3 +39,11 @@ harness = false
 [[bench]]
 name = "format_serde"
 harness = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+debug = false
+strip = true
+# panic = "abort"   # intentionally omitted (see doc/performance-improvement-plan.md § 0)
