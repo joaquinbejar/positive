@@ -472,10 +472,19 @@ impl Positive {
     }
 
     /// Formats the value with a fixed number of decimal places.
+    ///
+    /// Rounds the underlying `Decimal` at `decimal_places` using its
+    /// default rounding strategy and formats the result. No
+    /// `f64` round-trip, so precision is preserved beyond the ~15 digits
+    /// of `f64`.
+    #[inline]
     #[must_use]
     pub fn format_fixed_places(&self, decimal_places: u32) -> String {
-        let rounded = self.round_to(decimal_places).to_f64();
-        format!("{:.1$}", rounded, decimal_places as usize)
+        format!(
+            "{:.1$}",
+            self.0.round_dp(decimal_places),
+            decimal_places as usize
+        )
     }
 
     /// Calculates the exponential function e^x for this value.

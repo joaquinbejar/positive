@@ -1531,3 +1531,17 @@ fn test_checked_div_with_strategy_zero_divisor() {
         assert_eq!(r.to_dec(), dec!(7));
     }
 }
+
+#[test]
+fn test_format_fixed_places_preserves_decimal_precision() {
+    use rust_decimal_macros::dec;
+    // This value exceeds f64 precision (>15 significant digits). The
+    // Decimal-native formatter preserves every digit, while the old
+    // f64 round-trip would lose precision after ~15 digits.
+    let value = positive::Positive::new_decimal(dec!(1.2345678901234567890123)).expect("ok");
+    let formatted = value.format_fixed_places(20);
+    assert!(
+        formatted.contains("0123"),
+        "expected precise tail, got {formatted}"
+    );
+}
