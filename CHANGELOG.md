@@ -106,6 +106,11 @@ not yet finalised; do not rely on any intermediate state.
   (#30) so pathological inputs that could previously panic under raw
   `%` now return `false` instead. Observable behaviour for normal
   inputs is unchanged.
+- Audited `src/constants.rs` (#31): every `pub const` is built from
+  `dec!(...)` literals, `Decimal` associated constants, or
+  `Positive::from_decimal_const`. No runtime initialisation,
+  allocations, `OnceCell`, or `lazy_static` anywhere. Documented the
+  compile-time guarantee at the top of the module.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
