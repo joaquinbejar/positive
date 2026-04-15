@@ -75,6 +75,33 @@ pub fn is_positive<T: 'static>() -> bool {
     std::any::TypeId::of::<T>() == std::any::TypeId::of::<Positive>()
 }
 
+/// Panics with a uniform message when a `Positive` arithmetic operation
+/// overflows the underlying `Decimal` range.
+///
+/// Marked `#[cold]` and `#[inline(never)]` so the happy path stays lean.
+/// Callers will be wired in by the follow-up operator rewrites (#19–#22);
+/// `#[allow(dead_code)]` until then.
+#[cold]
+#[inline(never)]
+#[allow(dead_code)]
+pub(crate) fn overflow_panic(op: &'static str) -> ! {
+    panic!("Positive arithmetic overflow in {op}")
+}
+
+/// Panics with a uniform message when the result of a `Positive`
+/// arithmetic operation would violate the positivity invariant
+/// (negative, or zero under the `non-zero` feature).
+///
+/// Marked `#[cold]` and `#[inline(never)]` so the happy path stays lean.
+/// Callers will be wired in by the follow-up operator rewrites (#19–#22);
+/// `#[allow(dead_code)]` until then.
+#[cold]
+#[inline(never)]
+#[allow(dead_code)]
+pub(crate) fn invariant_panic(op: &'static str) -> ! {
+    panic!("Positive invariant broken in {op}: result would be non-positive")
+}
+
 impl Positive {
     // Re-export constants from the constants module for backward compatibility
     /// A zero value represented as a `Positive` value.
