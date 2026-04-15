@@ -32,7 +32,7 @@ use std::str::FromStr;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-pub struct Positive(pub Decimal);
+pub struct Positive(Decimal);
 
 /// Returns whether the given decimal value satisfies the positivity constraint.
 ///
@@ -553,6 +553,15 @@ impl Positive {
     /// ```
     #[must_use]
     pub const unsafe fn new_unchecked(value: Decimal) -> Self {
+        Positive(value)
+    }
+
+    /// Crate-private const constructor used exclusively by `crate::constants`
+    /// to define `Positive` constants in `const` context. The invariant is
+    /// enforced by the callers: every constant in `crate::constants` is a
+    /// strictly non-negative literal (or `>0` under the `non-zero` feature).
+    #[must_use]
+    pub(crate) const fn from_decimal_const(value: Decimal) -> Self {
         Positive(value)
     }
 }
