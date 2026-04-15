@@ -950,7 +950,7 @@ fn test_deserialize_negative_f64() {
 }
 
 #[test]
-#[should_panic(expected = "Resulting value must be positive")]
+#[should_panic(expected = "invariant broken in sub")]
 fn test_sub_panic() {
     let a = pos_or_panic!(3.0);
     let b = pos_or_panic!(5.0);
