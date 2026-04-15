@@ -74,6 +74,10 @@ not yet finalised; do not rely on any intermediate state.
   instead of a bespoke `panic!(...)` string (#24). Panic message is now
   `"Positive invariant broken in neg: result would be non-positive"`;
   `#[should_panic]` test updated accordingly.
+- `Positive::format_fixed_places` no longer goes through `f64` before
+  formatting (#25). It now rounds the underlying `Decimal` directly
+  via `round_dp`, preserving precision beyond the ~15 significant
+  digits of `f64`.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
