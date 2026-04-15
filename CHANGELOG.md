@@ -97,6 +97,11 @@ not yet finalised; do not rely on any intermediate state.
   and calling `trim_end_matches('0').trim_end_matches('.')` (#28). Same
   output for every tested case (integer-valued, fractional,
   `Positive::INFINITY`, very large non-`i64` integers).
+- `Positive::is_multiple_of_dec(other: Decimal) -> bool` (#29) —
+  `Decimal`-native multiplicity check using `Decimal::checked_rem`.
+  Replaces the lossy `f64`-based path. `Positive::is_multiple(f64)` is
+  now `#[deprecated(since = "0.5.0")]`; existing callers continue to
+  work but emit a deprecation warning.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
