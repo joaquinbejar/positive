@@ -53,6 +53,12 @@ not yet finalised; do not rely on any intermediate state.
   `MulAssign`) now also route through `Decimal::checked_*` (#20). For
   `Positive`-returning ops the invariant is re-checked; for
   `Decimal`-returning ops only overflow is guarded.
+- `<Op><f64>` operators (`Add`, `Sub`, `Mul`, `Div` between `Positive`
+  and `f64`, plus `Div` for `&Positive`) no longer do a
+  `Decimal → f64 → operate → f64 → Decimal` round-trip (#21). They now
+  lift the `f64` rhs into `Decimal` once via `Decimal::from_f64` and
+  stay in `Decimal` through `checked_*`, improving precision and
+  avoiding the lossy hop.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
