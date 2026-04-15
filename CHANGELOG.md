@@ -111,6 +111,11 @@ not yet finalised; do not rely on any intermediate state.
   `Positive::from_decimal_const`. No runtime initialisation,
   allocations, `OnceCell`, or `lazy_static` anywhere. Documented the
   compile-time guarantee at the top of the module.
+- Significantly expanded `Positive::new_unchecked` documentation (#32):
+  detailed `# Safety` invariant under both feature flags, a preference
+  ladder for choosing between `new_decimal` / `new` / the macros /
+  `new_unchecked`, and an explicit UB example. The function body is
+  unchanged.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by

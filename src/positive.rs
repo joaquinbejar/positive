@@ -755,23 +755,77 @@ impl Positive {
             .unwrap_or(false)
     }
 
-    /// Creates a new `Positive` value without checking if the value is non-negative.
+    /// Creates a new `Positive` value without validating the positivity
+    /// invariant.
+    ///
+    /// This is the crate's **only** public `unsafe` constructor and the
+    /// only escape hatch out of [`Positive::new`] /
+    /// [`Positive::new_decimal`]. Prefer the validated constructors in
+    /// every normal code path; `new_unchecked` is reserved for contexts
+    /// where the caller has already proven the invariant at compile time
+    /// (for example when reading back a previously validated
+    /// [`Decimal`]) and wants to skip the re-check.
     ///
     /// # Safety
     ///
-    /// The caller must ensure that `value >= 0`. Using this with a negative value
-    /// will violate the invariant of the `Positive` type and may cause undefined
-    /// behavior in code that relies on the positivity guarantee.
+    /// The caller must uphold the [`Positive`] invariant for `value`:
     ///
-    /// # Example
+    /// - Without the `non-zero` feature, `value >= Decimal::ZERO`.
+    /// - With the `non-zero` feature, `value > Decimal::ZERO`.
+    ///
+    /// Violating this invariant is **undefined behaviour** through the
+    /// rest of the crate: arithmetic, comparisons, serialisation, and
+    /// conversions all assume a `Positive` holds a non-negative (or
+    /// strictly positive under `non-zero`) `Decimal`. Downstream code
+    /// that relies on the positivity guarantee to skip range checks may
+    /// miscompute, infinite-loop, or return nonsensical results if that
+    /// assumption is broken.
+    ///
+    /// `new_unchecked` performs **no** validation, **no** conversion,
+    /// **no** rounding: the returned value wraps exactly the `Decimal`
+    /// you pass in.
+    ///
+    /// # When to use
+    ///
+    /// Genuine use cases are rare. In order of preference:
+    ///
+    /// 1. [`Positive::new_decimal`] — fallible, validates once,
+    ///    returns `Result<Self, PositiveError>`.
+    /// 2. [`Positive::new`] — same, but takes an `f64`.
+    /// 3. The [`pos!`](crate::pos) / [`spos!`](crate::spos) /
+    ///    [`pos_or_panic!`](crate::pos_or_panic) macros for ergonomic
+    ///    literal construction.
+    /// 4. `new_unchecked` — only if none of the above work, for
+    ///    example inside your own `const fn` paths where the input is
+    ///    a literal `Decimal` already known to be non-negative.
+    ///
+    /// Every call site must be accompanied by a `// SAFETY:` comment
+    /// that documents *why* the invariant holds for the specific input.
+    ///
+    /// # Examples
+    ///
+    /// Valid usage — the input literal is clearly non-negative:
     ///
     /// ```rust
     /// use positive::Positive;
     /// use rust_decimal_macros::dec;
     ///
-    /// // SAFETY: We know 5.0 is positive
+    /// // SAFETY: the literal `5.0` is strictly greater than zero, so
+    /// // the Positive invariant is preserved under both the default
+    /// // and `non-zero` features.
     /// let value = unsafe { Positive::new_unchecked(dec!(5.0)) };
     /// assert_eq!(value.to_f64(), 5.0);
+    /// ```
+    ///
+    /// Invalid usage (**undefined behaviour** — do **not** do this):
+    ///
+    /// ```ignore
+    /// use positive::Positive;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// // UB: the input is negative; every downstream operation on
+    /// // `broken` is now unsound.
+    /// let broken = unsafe { Positive::new_unchecked(dec!(-1)) };
     /// ```
     #[inline]
     #[must_use]
