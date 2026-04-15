@@ -180,13 +180,6 @@ fn test_positive_decimal_floor() {
     assert_eq!(a.floor().value(), dec!(1.0));
 }
 
-#[test]
-#[should_panic(expected = "invariant broken in neg")]
-fn test_positive_decimal_neg() {
-    let a = pos_or_panic!(1.0);
-    let _ = -a;
-}
-
 #[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_sum_owned_values() {

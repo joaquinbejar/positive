@@ -19,7 +19,7 @@ use std::fmt;
 use std::fmt::Display;
 #[cfg(not(feature = "non-zero"))]
 use std::iter::Sum;
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub};
 use std::str::FromStr;
 
 /// A wrapper type that represents a guaranteed positive decimal value.
@@ -1508,18 +1508,6 @@ impl PartialOrd<Decimal> for Positive {
     #[inline]
     fn partial_cmp(&self, other: &Decimal) -> Option<Ordering> {
         self.0.partial_cmp(other)
-    }
-}
-
-impl Neg for Positive {
-    type Output = Self;
-    /// Always panics — a `Positive` cannot be negated without violating
-    /// the invariant. Routed through [`invariant_panic`] for a uniform
-    /// panic message (`"Positive invariant broken in neg: result would
-    /// be non-positive"`).
-    #[inline]
-    fn neg(self) -> Self::Output {
-        invariant_panic("neg")
     }
 }
 
