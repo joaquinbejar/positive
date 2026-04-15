@@ -6,7 +6,7 @@
 
 //! Core implementation of the Positive type.
 
-use crate::constants::EPSILON;
+use crate::constants::{EPSILON, EPSILON_CMP};
 use crate::error::PositiveError;
 use approx::{AbsDiffEq, RelativeEq};
 use num_traits::{FromPrimitive, Pow, ToPrimitive};
@@ -889,8 +889,9 @@ impl fmt::Debug for Positive {
 }
 
 impl PartialEq<Decimal> for Positive {
+    #[inline]
     fn eq(&self, other: &Decimal) -> bool {
-        (self.0 - *other).abs() <= EPSILON * Decimal::from(100)
+        (self.0 - *other).abs() <= EPSILON_CMP
     }
 }
 
@@ -1244,7 +1245,7 @@ impl AbsDiffEq for Positive {
 
 impl RelativeEq for Positive {
     fn default_max_relative() -> Self::Epsilon {
-        EPSILON * Decimal::from(100)
+        EPSILON_CMP
     }
 
     fn relative_eq(
