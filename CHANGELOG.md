@@ -34,6 +34,11 @@ not yet finalised; do not rely on any intermediate state.
   arithmetic methods that were missing it (#15): `Positive::new`,
   `Positive::new_decimal`, `Positive::checked_sub`, `Positive::checked_div`.
 
+- Crate-private panic helpers `overflow_panic` and `invariant_panic`
+  (#18). Both are `#[cold] #[inline(never)]` and provide a single
+  canonical panic site for arithmetic overflow and invariant violations,
+  which upcoming operator rewrites (#19–#22) will route through instead
+  of `.expect()`.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
