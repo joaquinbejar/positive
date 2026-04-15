@@ -735,14 +735,24 @@ impl Positive {
             .unwrap_or(false)
     }
 
-    /// Checks whether the value is a multiple of another Positive value.
+    /// Checks whether the value is a multiple of another `Positive`
+    /// value.
+    ///
+    /// Returns `false` when `other` is zero. Uses
+    /// [`Decimal::checked_rem`] so pathological inputs cannot panic
+    /// (rule 50). The remainder is compared against [`EPSILON`] to
+    /// tolerate the tiny rounding artefacts `Decimal` can introduce at
+    /// the edge of its 28-digit mantissa.
+    #[inline]
     #[must_use]
     pub fn is_multiple_of(&self, other: &Positive) -> bool {
         if other.is_zero() {
             return false;
         }
-        let remainder = self.0 % other.0;
-        remainder.abs() < EPSILON
+        self.0
+            .checked_rem(other.0)
+            .map(|r| r.abs() < EPSILON)
+            .unwrap_or(false)
     }
 
     /// Creates a new `Positive` value without checking if the value is non-negative.
