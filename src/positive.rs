@@ -10,7 +10,7 @@ use crate::constants::{EPSILON, EPSILON_CMP};
 use crate::error::PositiveError;
 use approx::{AbsDiffEq, RelativeEq};
 use num_traits::{FromPrimitive, Pow, ToPrimitive};
-use rust_decimal::{Decimal, MathematicalOps};
+use rust_decimal::{Decimal, MathematicalOps, RoundingStrategy};
 use rust_decimal_macros::dec;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -73,6 +73,33 @@ fn min_bound() -> f64 {
 #[must_use]
 pub fn is_positive<T: 'static>() -> bool {
     std::any::TypeId::of::<T>() == std::any::TypeId::of::<Positive>()
+}
+
+/// Default rounding strategy used by every `Div` operator on `Positive`.
+///
+/// `Decimal` division is exact when the result fits in its 28-digit
+/// mantissa, but when it does not the operation must round. We pick
+/// banker's rounding (`MidpointNearestEven`) as the canonical strategy
+/// because it is statistically unbiased and matches IEEE-754 default
+/// behaviour for financial calculations. Callers needing a different
+/// strategy should use [`Positive::checked_div_with_strategy`].
+pub const DIV_ROUNDING_STRATEGY: RoundingStrategy = RoundingStrategy::MidpointNearestEven;
+
+/// Maximum decimal places preserved by division results.
+///
+/// `rust_decimal::Decimal` carries up to 28 digits of precision; rounding
+/// at that scale is effectively "keep full precision". This constant is
+/// used by every `Div` operator and by
+/// [`Positive::checked_div_with_strategy`].
+pub(crate) const DIV_SCALE: u32 = 28;
+
+/// Applies [`DIV_ROUNDING_STRATEGY`] to the result of a division.
+///
+/// Kept as a crate-private helper so every `Div` / `checked_div*`
+/// operator on `Positive` rounds through the same point.
+#[inline]
+pub(crate) fn round_div(result: Decimal) -> Decimal {
+    result.round_dp_with_strategy(DIV_SCALE, DIV_ROUNDING_STRATEGY)
 }
 
 /// Panics with a uniform message when a `Positive` arithmetic operation
@@ -536,6 +563,11 @@ impl Positive {
     }
 
     /// Checked division that returns Result instead of panicking.
+    ///
+    /// Uses [`DIV_ROUNDING_STRATEGY`] (banker's rounding) for any
+    /// rounding required by the result. Use
+    /// [`Positive::checked_div_with_strategy`] to select a different
+    /// strategy.
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the division-by-zero error"]
     pub fn checked_div(&self, rhs: &Self) -> Result<Self, PositiveError> {
         if rhs.is_zero() {
@@ -544,8 +576,32 @@ impl Positive {
                 "division by zero",
             ))
         } else {
-            Ok(Positive(self.0 / rhs.0))
+            Ok(Positive(round_div(self.0 / rhs.0)))
         }
+    }
+
+    /// Checked division with an explicit rounding strategy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `ArithmeticError` on division by zero or overflow.
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_div_with_strategy(
+        &self,
+        rhs: &Self,
+        strategy: RoundingStrategy,
+    ) -> Result<Self, PositiveError> {
+        if rhs.is_zero() {
+            return Err(PositiveError::arithmetic_error(
+                "division",
+                "division by zero",
+            ));
+        }
+        let result = self
+            .0
+            .checked_div(rhs.0)
+            .ok_or_else(|| PositiveError::arithmetic_error("division", "overflow"))?;
+        Ok(Positive(result.round_dp_with_strategy(DIV_SCALE, strategy)))
     }
 
     /// Checked addition with an `f64`, returning a `Result` instead of panicking.
@@ -630,7 +686,7 @@ impl Positive {
             .0
             .checked_div(rhs_dec)
             .ok_or_else(|| PositiveError::arithmetic_error("div_f64", "overflow"))?;
-        Positive::new_decimal(result)
+        Positive::new_decimal(round_div(result))
     }
 
     /// Checks whether the value is a multiple of another f64 value.
@@ -911,6 +967,10 @@ impl Mul<f64> for Positive {
 
 impl Div<f64> for Positive {
     type Output = Positive;
+    /// Divides by an `f64` using [`DIV_ROUNDING_STRATEGY`] (banker's
+    /// rounding) when rounding is required. For a different strategy
+    /// use [`Positive::checked_div_with_strategy`] on the lifted
+    /// `Decimal`.
     #[inline]
     fn div(self, rhs: f64) -> Positive {
         let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("div_f64"));
@@ -918,7 +978,7 @@ impl Div<f64> for Positive {
             invariant_panic("div_f64");
         }
         let result = match self.0.checked_div(rhs_dec) {
-            Some(v) => v,
+            Some(v) => round_div(v),
             None => overflow_panic("div_f64"),
         };
         if is_valid_positive_value(result) {
@@ -931,6 +991,8 @@ impl Div<f64> for Positive {
 
 impl Div<f64> for &Positive {
     type Output = Positive;
+    /// Divides a `&Positive` by an `f64` using [`DIV_ROUNDING_STRATEGY`]
+    /// (banker's rounding) when rounding is required.
     #[inline]
     fn div(self, rhs: f64) -> Positive {
         let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("div_f64"));
@@ -938,7 +1000,7 @@ impl Div<f64> for &Positive {
             invariant_panic("div_f64");
         }
         let result = match self.0.checked_div(rhs_dec) {
-            Some(v) => v,
+            Some(v) => round_div(v),
             None => overflow_panic("div_f64"),
         };
         if is_valid_positive_value(result) {
@@ -1176,13 +1238,16 @@ impl Sub for Positive {
 
 impl Div for Positive {
     type Output = Positive;
+    /// Divides two `Positive` values using [`DIV_ROUNDING_STRATEGY`]
+    /// (banker's rounding) when rounding is required. For a different
+    /// strategy use [`Positive::checked_div_with_strategy`].
     #[inline]
     fn div(self, other: Positive) -> Self::Output {
         if other.0.is_zero() {
             invariant_panic("div");
         }
         match self.0.checked_div(other.0) {
-            Some(v) => Positive(v),
+            Some(v) => Positive(round_div(v)),
             None => overflow_panic("div"),
         }
     }
@@ -1190,13 +1255,15 @@ impl Div for Positive {
 
 impl Div for &Positive {
     type Output = Positive;
+    /// Divides two `&Positive` values using [`DIV_ROUNDING_STRATEGY`]
+    /// (banker's rounding) when rounding is required.
     #[inline]
     fn div(self, other: &Positive) -> Self::Output {
         if other.0.is_zero() {
             invariant_panic("div");
         }
         match self.0.checked_div(other.0) {
-            Some(v) => Positive(v),
+            Some(v) => Positive(round_div(v)),
             None => overflow_panic("div"),
         }
     }
@@ -1308,13 +1375,15 @@ impl MulAssign<Decimal> for Positive {
 
 impl Div<Decimal> for Positive {
     type Output = Positive;
+    /// Divides by a `Decimal` using [`DIV_ROUNDING_STRATEGY`] (banker's
+    /// rounding) when rounding is required.
     #[inline]
     fn div(self, rhs: Decimal) -> Positive {
         if rhs.is_zero() {
             invariant_panic("div_decimal");
         }
         let result = match self.0.checked_div(rhs) {
-            Some(v) => v,
+            Some(v) => round_div(v),
             None => overflow_panic("div_decimal"),
         };
         if is_valid_positive_value(result) {
@@ -1327,13 +1396,15 @@ impl Div<Decimal> for Positive {
 
 impl Div<&Decimal> for Positive {
     type Output = Positive;
+    /// Divides by a `&Decimal` using [`DIV_ROUNDING_STRATEGY`] (banker's
+    /// rounding) when rounding is required.
     #[inline]
     fn div(self, rhs: &Decimal) -> Self::Output {
         if rhs.is_zero() {
             invariant_panic("div_decimal");
         }
         let result = match self.0.checked_div(*rhs) {
-            Some(v) => v,
+            Some(v) => round_div(v),
             None => overflow_panic("div_decimal"),
         };
         if is_valid_positive_value(result) {

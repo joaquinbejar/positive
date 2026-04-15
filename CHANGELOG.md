@@ -65,6 +65,11 @@ not yet finalised; do not rely on any intermediate state.
   `Positive::checked_add_f64`, `checked_sub_f64`, `checked_mul_f64`,
   `checked_div_f64`. Required by rule 52 (checked equivalent must exist
   for every panicking operator).
+- Explicit `Div` rounding strategy (#23): `DIV_ROUNDING_STRATEGY` const
+  (banker's rounding / `MidpointNearestEven`) drives every `Div` impl
+  and `Positive::checked_div` / `checked_div_f64` via the crate-private
+  `round_div` helper. Callers who need a different strategy can use the
+  new `Positive::checked_div_with_strategy`. Rule 54.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by

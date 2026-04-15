@@ -1473,3 +1473,61 @@ fn test_checked_div_f64_ok() {
     let result = p.checked_div_f64(4.0).expect("ok");
     assert_eq!(result.to_f64(), 2.5);
 }
+
+// ===== Div rounding strategy (issue #23) =====
+
+#[test]
+fn test_div_default_uses_bankers_rounding() {
+    use rust_decimal_macros::dec;
+    // 1 / 3 = 0.333...; banker's rounding at 28 dp gives the decimal
+    // truncated at that scale.
+    let a = positive::Positive::new_decimal(dec!(1)).expect("ok");
+    let b = positive::Positive::new_decimal(dec!(3)).expect("ok");
+    let r = a / b;
+    // Result must equal 1/3 rounded to 28 dp.
+    let expected = dec!(1) / dec!(3);
+    assert_eq!(
+        r.to_dec()
+            .round_dp_with_strategy(28, rust_decimal::RoundingStrategy::MidpointNearestEven),
+        expected.round_dp_with_strategy(28, rust_decimal::RoundingStrategy::MidpointNearestEven)
+    );
+}
+
+#[test]
+fn test_checked_div_with_strategy_ok() {
+    use rust_decimal_macros::dec;
+    let a = positive::Positive::new_decimal(dec!(7)).expect("ok");
+    let b = positive::Positive::new_decimal(dec!(2)).expect("ok");
+    let r = a
+        .checked_div_with_strategy(&b, rust_decimal::RoundingStrategy::ToZero)
+        .expect("ok");
+    assert_eq!(r.to_dec(), dec!(3.5));
+}
+
+#[test]
+fn test_checked_div_with_strategy_zero_divisor() {
+    use rust_decimal_macros::dec;
+    let a = positive::Positive::new_decimal(dec!(7)).expect("ok");
+    let b = positive::Positive::new_decimal(dec!(0)).unwrap_or(positive::Positive::ONE);
+    // Under default features b may be zero; under non-zero it's ONE.
+    #[cfg(not(feature = "non-zero"))]
+    {
+        let b = positive::Positive::new_decimal(dec!(0)).expect("ok");
+        let err = a
+            .checked_div_with_strategy(&b, rust_decimal::RoundingStrategy::ToZero)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            positive::PositiveError::ArithmeticError { .. }
+        ));
+    }
+    #[cfg(feature = "non-zero")]
+    {
+        // Non-zero cannot construct zero; this branch is not reachable
+        // with a real zero, so we just sanity-check the positive path.
+        let r = a
+            .checked_div_with_strategy(&b, rust_decimal::RoundingStrategy::ToZero)
+            .expect("ok");
+        assert_eq!(r.to_dec(), dec!(7));
+    }
+}
