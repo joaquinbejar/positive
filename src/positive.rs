@@ -1085,34 +1085,28 @@ impl PartialEq<f64> for Positive {
 impl Display for Positive {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if *self == Positive::INFINITY {
-            write!(f, "{}", f64::MAX)
-        } else if self.0.scale() == 0 {
-            match self.0.to_i64() {
-                Some(val) => write!(f, "{val}"),
-                None => write!(f, "{}", self.0),
-            }
-        } else if let Some(precision) = f.precision() {
-            write!(f, "{:.1$}", self.0, precision)
-        } else {
-            let s = self.0.to_string();
-            let trimmed = s.trim_end_matches('0').trim_end_matches('.');
-            write!(f, "{trimmed}")
+            return write!(f, "{}", f64::MAX);
         }
+        if let Some(precision) = f.precision() {
+            return write!(f, "{:.1$}", self.0, precision);
+        }
+        // `Decimal::normalize` strips trailing zeros past the decimal
+        // point (e.g. `1.500` -> `1.5`, `5.00` -> `5`), which matches
+        // the previous `to_string() + trim_end_matches('0')` approach
+        // without allocating an intermediate `String`.
+        write!(f, "{}", self.0.normalize())
     }
 }
 
 impl fmt::Debug for Positive {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if *self == Positive::INFINITY {
-            write!(f, "{}", f64::MAX)
-        } else if self.0.scale() == 0 {
-            match self.0.to_i64() {
-                Some(val) => write!(f, "{val}"),
-                None => write!(f, "{}", self.0),
-            }
-        } else {
-            write!(f, "{}", self.0)
+            return write!(f, "{}", f64::MAX);
         }
+        // Same normalisation as `Display` so integer-valued decimals
+        // render without trailing `.0` and fractional ones without
+        // trailing zeros.
+        write!(f, "{}", self.0.normalize())
     }
 }
 
