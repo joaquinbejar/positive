@@ -30,6 +30,9 @@ not yet finalised; do not rely on any intermediate state.
   `from_decimal_const`, every `From`/`Into`/`PartialEq`/`PartialOrd`, and
   every `Add`/`Sub`/`Mul`/`Div`/`AddAssign`/`MulAssign`/`Neg` impl for
   `Positive` (both sides).
+- `#[must_use]` on the remaining public constructors and checked
+  arithmetic methods that were missing it (#15): `Positive::new`,
+  `Positive::new_decimal`, `Positive::checked_sub`, `Positive::checked_div`.
 
 ### Changed
 
