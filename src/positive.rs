@@ -1070,7 +1070,15 @@ impl Add<Decimal> for Positive {
     type Output = Positive;
     #[inline]
     fn add(self, rhs: Decimal) -> Positive {
-        Positive(self.0 + rhs)
+        let result = match self.0.checked_add(rhs) {
+            Some(v) => v,
+            None => overflow_panic("add_decimal"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("add_decimal")
+        }
     }
 }
 
@@ -1078,7 +1086,15 @@ impl Add<&Decimal> for Positive {
     type Output = Positive;
     #[inline]
     fn add(self, rhs: &Decimal) -> Self::Output {
-        Positive::new_decimal(self.0 + rhs).expect("Addition result must be positive")
+        let result = match self.0.checked_add(*rhs) {
+            Some(v) => v,
+            None => overflow_panic("add_decimal"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("add_decimal")
+        }
     }
 }
 
@@ -1086,7 +1102,15 @@ impl Sub<Decimal> for Positive {
     type Output = Positive;
     #[inline]
     fn sub(self, rhs: Decimal) -> Positive {
-        Positive::new_decimal(self.0 - rhs).expect("Resulting value must be positive")
+        let result = match self.0.checked_sub(rhs) {
+            Some(v) => v,
+            None => overflow_panic("sub_decimal"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("sub_decimal")
+        }
     }
 }
 
@@ -1094,7 +1118,15 @@ impl Sub<&Decimal> for Positive {
     type Output = Positive;
     #[inline]
     fn sub(self, rhs: &Decimal) -> Self::Output {
-        Positive::new_decimal(self.0 - rhs).expect("Resulting value must be positive")
+        let result = match self.0.checked_sub(*rhs) {
+            Some(v) => v,
+            None => overflow_panic("sub_decimal"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("sub_decimal")
+        }
     }
 }
 
@@ -1111,14 +1143,30 @@ impl AddAssign for Positive {
 impl AddAssign<Decimal> for Positive {
     #[inline]
     fn add_assign(&mut self, rhs: Decimal) {
-        self.0 += rhs;
+        let result = match self.0.checked_add(rhs) {
+            Some(v) => v,
+            None => overflow_panic("add_assign_decimal"),
+        };
+        if is_valid_positive_value(result) {
+            self.0 = result;
+        } else {
+            invariant_panic("add_assign_decimal");
+        }
     }
 }
 
 impl MulAssign<Decimal> for Positive {
     #[inline]
     fn mul_assign(&mut self, rhs: Decimal) {
-        self.0 *= rhs;
+        let result = match self.0.checked_mul(rhs) {
+            Some(v) => v,
+            None => overflow_panic("mul_assign_decimal"),
+        };
+        if is_valid_positive_value(result) {
+            self.0 = result;
+        } else {
+            invariant_panic("mul_assign_decimal");
+        }
     }
 }
 
@@ -1126,7 +1174,18 @@ impl Div<Decimal> for Positive {
     type Output = Positive;
     #[inline]
     fn div(self, rhs: Decimal) -> Positive {
-        Positive(self.0 / rhs)
+        if rhs.is_zero() {
+            invariant_panic("div_decimal");
+        }
+        let result = match self.0.checked_div(rhs) {
+            Some(v) => v,
+            None => overflow_panic("div_decimal"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("div_decimal")
+        }
     }
 }
 
@@ -1134,7 +1193,18 @@ impl Div<&Decimal> for Positive {
     type Output = Positive;
     #[inline]
     fn div(self, rhs: &Decimal) -> Self::Output {
-        Positive::new_decimal(self.0 / rhs).expect("Division result must be positive")
+        if rhs.is_zero() {
+            invariant_panic("div_decimal");
+        }
+        let result = match self.0.checked_div(*rhs) {
+            Some(v) => v,
+            None => overflow_panic("div_decimal"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("div_decimal")
+        }
     }
 }
 
@@ -1168,7 +1238,15 @@ impl Mul<Decimal> for Positive {
     type Output = Positive;
     #[inline]
     fn mul(self, rhs: Decimal) -> Positive {
-        Positive(self.0 * rhs)
+        let result = match self.0.checked_mul(rhs) {
+            Some(v) => v,
+            None => overflow_panic("mul_decimal"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("mul_decimal")
+        }
     }
 }
 
@@ -1176,7 +1254,10 @@ impl Mul<Positive> for Decimal {
     type Output = Decimal;
     #[inline]
     fn mul(self, rhs: Positive) -> Decimal {
-        self * rhs.0
+        match self.checked_mul(rhs.0) {
+            Some(v) => v,
+            None => overflow_panic("mul_decimal_by_positive"),
+        }
     }
 }
 
@@ -1184,7 +1265,13 @@ impl Div<Positive> for Decimal {
     type Output = Decimal;
     #[inline]
     fn div(self, rhs: Positive) -> Decimal {
-        self / rhs.0
+        if rhs.0.is_zero() {
+            invariant_panic("div_decimal_by_positive");
+        }
+        match self.checked_div(rhs.0) {
+            Some(v) => v,
+            None => overflow_panic("div_decimal_by_positive"),
+        }
     }
 }
 
@@ -1192,7 +1279,10 @@ impl Sub<Positive> for Decimal {
     type Output = Decimal;
     #[inline]
     fn sub(self, rhs: Positive) -> Decimal {
-        self - rhs.0
+        match self.checked_sub(rhs.0) {
+            Some(v) => v,
+            None => overflow_panic("sub_decimal_by_positive"),
+        }
     }
 }
 
@@ -1200,7 +1290,10 @@ impl Sub<&Positive> for Decimal {
     type Output = Decimal;
     #[inline]
     fn sub(self, rhs: &Positive) -> Decimal {
-        self - rhs.0
+        match self.checked_sub(rhs.0) {
+            Some(v) => v,
+            None => overflow_panic("sub_decimal_by_positive"),
+        }
     }
 }
 
@@ -1208,7 +1301,10 @@ impl Add<Positive> for Decimal {
     type Output = Decimal;
     #[inline]
     fn add(self, rhs: Positive) -> Decimal {
-        self + rhs.0
+        match self.checked_add(rhs.0) {
+            Some(v) => v,
+            None => overflow_panic("add_decimal_by_positive"),
+        }
     }
 }
 
@@ -1216,35 +1312,50 @@ impl Add<&Positive> for Decimal {
     type Output = Decimal;
     #[inline]
     fn add(self, rhs: &Positive) -> Decimal {
-        self + rhs.0
+        match self.checked_add(rhs.0) {
+            Some(v) => v,
+            None => overflow_panic("add_decimal_by_positive"),
+        }
     }
 }
 
 impl std::ops::AddAssign<Positive> for Decimal {
     #[inline]
     fn add_assign(&mut self, rhs: Positive) {
-        *self += rhs.0;
+        match self.checked_add(rhs.0) {
+            Some(v) => *self = v,
+            None => overflow_panic("add_assign_decimal_by_positive"),
+        }
     }
 }
 
 impl std::ops::AddAssign<&Positive> for Decimal {
     #[inline]
     fn add_assign(&mut self, rhs: &Positive) {
-        *self += rhs.0;
+        match self.checked_add(rhs.0) {
+            Some(v) => *self = v,
+            None => overflow_panic("add_assign_decimal_by_positive"),
+        }
     }
 }
 
 impl std::ops::MulAssign<Positive> for Decimal {
     #[inline]
     fn mul_assign(&mut self, rhs: Positive) {
-        *self *= rhs.0;
+        match self.checked_mul(rhs.0) {
+            Some(v) => *self = v,
+            None => overflow_panic("mul_assign_decimal_by_positive"),
+        }
     }
 }
 
 impl std::ops::MulAssign<&Positive> for Decimal {
     #[inline]
     fn mul_assign(&mut self, rhs: &Positive) {
-        *self *= rhs.0;
+        match self.checked_mul(rhs.0) {
+            Some(v) => *self = v,
+            None => overflow_panic("mul_assign_decimal_by_positive"),
+        }
     }
 }
 
