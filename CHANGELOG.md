@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - unreleased
+
+This is a development version of 0.5.0 collecting the M2 Phase 1
+rule-compliance and performance refactors (see the milestone
+`M2 · Phase 1 — Rule compliance + inlining + profile`). The release is
+not yet finalised; do not rely on any intermediate state.
+
+### Added
+
+- `[profile.release]` with thin LTO, single codegen-unit, `opt-level = 3`,
+  `strip = true`, and `debug = false` (#10).
+
 ## [0.4.2] - 2026-04-14
 
 ### Fixed
