@@ -417,6 +417,7 @@ fn test_format_fixed_places() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_is_multiple() {
     let num = pos_or_panic!(10.0);
     assert!(num.is_multiple(2.0));
@@ -684,6 +685,7 @@ fn test_clamp_within_range() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_is_multiple_edge_cases() {
     // Test with a value that would produce non-finite result in modulo
     let value = pos_or_panic!(10.0);
@@ -1279,6 +1281,7 @@ fn test_debug_decimal_value() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_is_multiple_true_case() {
     let value = pos_or_panic!(10.0);
     assert!(value.is_multiple(2.0));
@@ -1287,12 +1290,14 @@ fn test_is_multiple_true_case() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_is_multiple_near_boundary() {
     let value = pos_or_panic!(9.999999999999998);
     assert!(value.is_multiple(1.0));
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_is_multiple_with_non_finite() {
     // Test is_multiple when value would produce non-finite result
     // Note: Positive::INFINITY is Decimal::MAX which is finite when converted to f64
@@ -1544,4 +1549,28 @@ fn test_format_fixed_places_preserves_decimal_precision() {
         formatted.contains("0123"),
         "expected precise tail, got {formatted}"
     );
+}
+
+#[test]
+fn test_is_multiple_of_dec_true() {
+    use rust_decimal_macros::dec;
+    let p = pos_or_panic!(15.0);
+    assert!(p.is_multiple_of_dec(dec!(3)));
+    assert!(p.is_multiple_of_dec(dec!(5)));
+    assert!(p.is_multiple_of_dec(dec!(1)));
+}
+
+#[test]
+fn test_is_multiple_of_dec_false() {
+    use rust_decimal_macros::dec;
+    let p = pos_or_panic!(15.0);
+    assert!(!p.is_multiple_of_dec(dec!(2)));
+    assert!(!p.is_multiple_of_dec(dec!(4)));
+}
+
+#[test]
+fn test_is_multiple_of_dec_zero_divisor() {
+    use rust_decimal_macros::dec;
+    let p = pos_or_panic!(15.0);
+    assert!(!p.is_multiple_of_dec(dec!(0)));
 }

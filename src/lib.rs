@@ -192,10 +192,11 @@
 //! ```rust
 //! use positive::pos_or_panic;
 //!
+//! use rust_decimal_macros::dec;
 //! let p = pos_or_panic!(5.0);
 //!
 //! let is_zero = p.is_zero();                      // Check if zero
-//! let is_mult = p.is_multiple(2.0);               // Check if multiple of value
+//! let is_mult = p.is_multiple_of_dec(dec!(2));    // Check if multiple of value
 //! let clamped = p.clamp(pos_or_panic!(1.0), pos_or_panic!(10.0));   // Clamp between bounds
 //! let min_val = p.min(pos_or_panic!(3.0));                 // Minimum of two values
 //! let max_val = p.max(pos_or_panic!(3.0));                 // Maximum of two values

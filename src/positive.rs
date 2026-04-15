@@ -698,7 +698,16 @@ impl Positive {
         Positive::new_decimal(round_div(result))
     }
 
-    /// Checks whether the value is a multiple of another f64 value.
+    /// Checks whether the value is a multiple of another `f64` value.
+    ///
+    /// Prefer [`Positive::is_multiple_of_dec`] for full `Decimal`
+    /// precision — this variant lifts the value to `f64` and compares
+    /// against `f64::EPSILON`, which can misclassify values beyond the
+    /// ~15-digit precision of `f64`.
+    #[deprecated(
+        since = "0.5.0",
+        note = "use `is_multiple_of_dec` for Decimal-native precision"
+    )]
     #[must_use]
     pub fn is_multiple(&self, other: f64) -> bool {
         let value = self.to_f64();
@@ -707,6 +716,23 @@ impl Positive {
         }
         let remainder = value % other;
         remainder.abs() < f64::EPSILON || (other - remainder.abs()).abs() < f64::EPSILON
+    }
+
+    /// Checks whether the value is a multiple of a `Decimal` without
+    /// lifting to `f64`.
+    ///
+    /// Returns `false` when `other` is zero. Uses
+    /// [`Decimal::checked_rem`] so pathological inputs cannot panic.
+    #[inline]
+    #[must_use]
+    pub fn is_multiple_of_dec(&self, other: Decimal) -> bool {
+        if other.is_zero() {
+            return false;
+        }
+        self.0
+            .checked_rem(other)
+            .map(|r| r.is_zero())
+            .unwrap_or(false)
     }
 
     /// Checks whether the value is a multiple of another Positive value.
