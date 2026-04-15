@@ -7,12 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.0] - unreleased
+## [0.5.0] - 2026-04-15
 
-This is a development version of 0.5.0 collecting the M2 Phase 1
-rule-compliance and performance refactors (see the milestone
-`M2 · Phase 1 — Rule compliance + inlining + profile`). The release is
-not yet finalised; do not rely on any intermediate state.
+Major release completing milestones M2 through M7 of the performance
+and rule-compliance programme. Contains several **breaking** API
+changes (listed under *Removed* / *Changed*). Highlights below.
+
+### Highlights
+
+- **Hot paths faster by 10–80%.** See *Benchmarks vs 0.4.2* in the
+  release notes: `format_fixed_places` −40 to −78%, `<Op><f64>` −18
+  to −39%, `Positive → usize` −57%, many conversions −10 to −25%.
+- **Invariant-safe arithmetic.** Every operator now routes through
+  `Decimal::checked_*` and uniform `overflow_panic` /
+  `invariant_panic` helpers (rules 50 / 52 / 63).
+- **Rule-compliant surface.** `#[repr(transparent)]`, derive reorder,
+  `#[cold]` on every error constructor, `#[inline]` on every hot-path
+  helper, `#[must_use]` audit.
+- **New checked `f64` API:** `checked_add_f64`, `checked_sub_f64`,
+  `checked_mul_f64`, `checked_div_f64`, `checked_div_with_strategy`.
+- **Documented `Div` rounding strategy** (`DIV_ROUNDING_STRATEGY`
+  = banker's rounding) with per-call override.
 
 ### Added
 
