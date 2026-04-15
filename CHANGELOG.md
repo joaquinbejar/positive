@@ -92,6 +92,11 @@ not yet finalised; do not rely on any intermediate state.
   (which re-checks the same invariant); now they call only
   `new_decimal`. Error messages for negative/zero inputs now come from
   `PositiveError::OutOfBounds` rather than the bespoke custom strings.
+- `Display` and `Debug` for `Positive` now delegate to
+  `Decimal::normalize()` instead of allocating an intermediate `String`
+  and calling `trim_end_matches('0').trim_end_matches('.')` (#28). Same
+  output for every tested case (integer-valued, fractional,
+  `Positive::INFINITY`, very large non-`i64` integers).
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
