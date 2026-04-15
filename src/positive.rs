@@ -811,7 +811,16 @@ impl Mul<f64> for Positive {
     type Output = Positive;
     #[inline]
     fn mul(self, rhs: f64) -> Positive {
-        Positive::new(self.to_f64() * rhs).expect("Multiplication result must be positive")
+        let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("mul_f64"));
+        let result = match self.0.checked_mul(rhs_dec) {
+            Some(v) => v,
+            None => overflow_panic("mul_f64"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("mul_f64")
+        }
     }
 }
 
@@ -819,7 +828,19 @@ impl Div<f64> for Positive {
     type Output = Positive;
     #[inline]
     fn div(self, rhs: f64) -> Positive {
-        Positive::new(self.to_f64() / rhs).expect("Division result must be positive")
+        let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("div_f64"));
+        if rhs_dec.is_zero() {
+            invariant_panic("div_f64");
+        }
+        let result = match self.0.checked_div(rhs_dec) {
+            Some(v) => v,
+            None => overflow_panic("div_f64"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("div_f64")
+        }
     }
 }
 
@@ -827,7 +848,19 @@ impl Div<f64> for &Positive {
     type Output = Positive;
     #[inline]
     fn div(self, rhs: f64) -> Positive {
-        Positive::new(self.to_f64() / rhs).expect("Division result must be positive")
+        let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("div_f64"));
+        if rhs_dec.is_zero() {
+            invariant_panic("div_f64");
+        }
+        let result = match self.0.checked_div(rhs_dec) {
+            Some(v) => v,
+            None => overflow_panic("div_f64"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("div_f64")
+        }
     }
 }
 
@@ -835,7 +868,16 @@ impl Sub<f64> for Positive {
     type Output = Positive;
     #[inline]
     fn sub(self, rhs: f64) -> Self::Output {
-        Positive::new(self.to_f64() - rhs).expect("Subtraction result must be positive")
+        let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("sub_f64"));
+        let result = match self.0.checked_sub(rhs_dec) {
+            Some(v) => v,
+            None => overflow_panic("sub_f64"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("sub_f64")
+        }
     }
 }
 
@@ -843,7 +885,16 @@ impl Add<f64> for Positive {
     type Output = Positive;
     #[inline]
     fn add(self, rhs: f64) -> Self::Output {
-        Positive::new(self.to_f64() + rhs).expect("Addition result must be positive")
+        let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("add_f64"));
+        let result = match self.0.checked_add(rhs_dec) {
+            Some(v) => v,
+            None => overflow_panic("add_f64"),
+        };
+        if is_valid_positive_value(result) {
+            Positive(result)
+        } else {
+            invariant_panic("add_f64")
+        }
     }
 }
 
