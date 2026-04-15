@@ -34,6 +34,11 @@ not yet finalised; do not rely on any intermediate state.
   arithmetic methods that were missing it (#15): `Positive::new`,
   `Positive::new_decimal`, `Positive::checked_sub`, `Positive::checked_div`.
 
+- `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
+  precomputed once so `PartialEq<Decimal> for Positive` and
+  `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
+  `Decimal::from(100)` on every call.
+
 ### Fixed
 
 - `From<Positive> for usize` now routes through `Decimal::to_u64()`

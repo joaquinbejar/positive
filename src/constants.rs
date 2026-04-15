@@ -193,6 +193,13 @@ pub const E: Positive = Positive::from_decimal_const(Decimal::E);
 /// Used for floating-point tolerance in equality checks.
 pub const EPSILON: Decimal = dec!(1e-16);
 
+/// Tolerance for `Positive == Decimal` comparisons.
+///
+/// Precomputed as `EPSILON * 100` (= `1e-14`). Declaring it as a `const`
+/// avoids the `Decimal::from(100)` construction and multiplication on
+/// every `PartialEq<Decimal>` call.
+pub const EPSILON_CMP: Decimal = dec!(1e-14);
+
 /// Represents the maximum positive value possible (effectively infinity).
 pub const INFINITY: Positive = Positive::from_decimal_const(Decimal::MAX);
 
