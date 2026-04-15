@@ -39,6 +39,15 @@ not yet finalised; do not rely on any intermediate state.
   canonical panic site for arithmetic overflow and invariant violations,
   which upcoming operator rewrites (#19–#22) will route through instead
   of `.expect()`.
+
+### Changed
+
+- All `Positive`⇄`Positive` operators (`Add`, `Sub`, `Mul`, `Div` for
+  both owned and `&` operands, plus `AddAssign`) now route through
+  `Decimal::checked_*` and the new panic helpers (#19) instead of raw
+  arithmetic or ad-hoc `panic!`. Overflow and invariant violations
+  surface via `overflow_panic` / `invariant_panic` with uniform
+  messages. Test panic expectations updated accordingly.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by

@@ -79,11 +79,8 @@ pub fn is_positive<T: 'static>() -> bool {
 /// overflows the underlying `Decimal` range.
 ///
 /// Marked `#[cold]` and `#[inline(never)]` so the happy path stays lean.
-/// Callers will be wired in by the follow-up operator rewrites (#19–#22);
-/// `#[allow(dead_code)]` until then.
 #[cold]
 #[inline(never)]
-#[allow(dead_code)]
 pub(crate) fn overflow_panic(op: &'static str) -> ! {
     panic!("Positive arithmetic overflow in {op}")
 }
@@ -93,11 +90,8 @@ pub(crate) fn overflow_panic(op: &'static str) -> ! {
 /// (negative, or zero under the `non-zero` feature).
 ///
 /// Marked `#[cold]` and `#[inline(never)]` so the happy path stays lean.
-/// Callers will be wired in by the follow-up operator rewrites (#19–#22);
-/// `#[allow(dead_code)]` until then.
 #[cold]
 #[inline(never)]
-#[allow(dead_code)]
 pub(crate) fn invariant_panic(op: &'static str) -> ! {
     panic!("Positive invariant broken in {op}: result would be non-positive")
 }
@@ -1021,7 +1015,10 @@ impl Add for Positive {
     type Output = Positive;
     #[inline]
     fn add(self, other: Positive) -> Positive {
-        Positive(self.0 + other.0)
+        match self.0.checked_add(other.0) {
+            Some(v) => Positive(v),
+            None => overflow_panic("add"),
+        }
     }
 }
 
@@ -1029,11 +1026,14 @@ impl Sub for Positive {
     type Output = Positive;
     #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
-        let result = self.0 - rhs.0;
-        if result < Decimal::ZERO {
-            panic!("Resulting value must be positive");
-        } else {
+        let result = match self.0.checked_sub(rhs.0) {
+            Some(v) => v,
+            None => overflow_panic("sub"),
+        };
+        if is_valid_positive_value(result) {
             Positive(result)
+        } else {
+            invariant_panic("sub")
         }
     }
 }
@@ -1042,7 +1042,13 @@ impl Div for Positive {
     type Output = Positive;
     #[inline]
     fn div(self, other: Positive) -> Self::Output {
-        Positive(self.0 / other.0)
+        if other.0.is_zero() {
+            invariant_panic("div");
+        }
+        match self.0.checked_div(other.0) {
+            Some(v) => Positive(v),
+            None => overflow_panic("div"),
+        }
     }
 }
 
@@ -1050,7 +1056,13 @@ impl Div for &Positive {
     type Output = Positive;
     #[inline]
     fn div(self, other: &Positive) -> Self::Output {
-        Positive(self.0 / other.0)
+        if other.0.is_zero() {
+            invariant_panic("div");
+        }
+        match self.0.checked_div(other.0) {
+            Some(v) => Positive(v),
+            None => overflow_panic("div"),
+        }
     }
 }
 
@@ -1089,7 +1101,10 @@ impl Sub<&Decimal> for Positive {
 impl AddAssign for Positive {
     #[inline]
     fn add_assign(&mut self, other: Positive) {
-        self.0 += other.0;
+        match self.0.checked_add(other.0) {
+            Some(v) => self.0 = v,
+            None => overflow_panic("add_assign"),
+        }
     }
 }
 
@@ -1142,7 +1157,10 @@ impl Mul for Positive {
     type Output = Positive;
     #[inline]
     fn mul(self, other: Positive) -> Positive {
-        Positive(self.0 * other.0)
+        match self.0.checked_mul(other.0) {
+            Some(v) => Positive(v),
+            None => overflow_panic("mul"),
+        }
     }
 }
 
