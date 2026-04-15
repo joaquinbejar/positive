@@ -21,6 +21,9 @@ not yet finalised; do not rely on any intermediate state.
 - `#[repr(transparent)]` on `Positive` (#11).
 - Derived `Eq`, `PartialOrd`, `Ord` on `Positive` with the canonical derive
   ordering (#11). Manual impls removed.
+- `#[cold] #[inline(never)]` on every `PositiveError` constructor and on
+  the `From<&str>` / `From<String>` impls (#13). Keeps error-formatting
+  code out of hot call sites.
 
 ### Changed
 

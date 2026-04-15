@@ -119,6 +119,8 @@ impl PositiveError {
     /// # Returns
     ///
     /// A new `PositiveError::InvalidValue` instance
+    #[cold]
+    #[inline(never)]
     #[must_use]
     pub fn invalid_value(value: f64, reason: &str) -> Self {
         PositiveError::InvalidValue {
@@ -137,6 +139,8 @@ impl PositiveError {
     /// # Returns
     ///
     /// A new `PositiveError::ArithmeticError` instance
+    #[cold]
+    #[inline(never)]
     #[must_use]
     pub fn arithmetic_error(operation: &str, reason: &str) -> Self {
         PositiveError::ArithmeticError {
@@ -156,6 +160,8 @@ impl PositiveError {
     /// # Returns
     ///
     /// A new `PositiveError::ConversionError` instance
+    #[cold]
+    #[inline(never)]
     #[must_use]
     pub fn conversion_error(from_type: &str, to_type: &str, reason: &str) -> Self {
         PositiveError::ConversionError {
@@ -176,6 +182,8 @@ impl PositiveError {
     /// # Returns
     ///
     /// A new `PositiveError::OutOfBounds` instance
+    #[cold]
+    #[inline(never)]
     #[must_use]
     pub fn out_of_bounds(value: f64, min: f64, max: f64) -> Self {
         PositiveError::OutOfBounds { value, min, max }
@@ -191,6 +199,8 @@ impl PositiveError {
     /// # Returns
     ///
     /// A new `PositiveError::InvalidPrecision` instance
+    #[cold]
+    #[inline(never)]
     #[must_use]
     pub fn invalid_precision(precision: i32, reason: &str) -> Self {
         PositiveError::InvalidPrecision {
@@ -201,12 +211,16 @@ impl PositiveError {
 }
 
 impl From<&str> for PositiveError {
+    #[cold]
+    #[inline(never)]
     fn from(s: &str) -> Self {
         PositiveError::Other(s.to_string())
     }
 }
 
 impl From<String> for PositiveError {
+    #[cold]
+    #[inline(never)]
     fn from(s: String) -> Self {
         PositiveError::Other(s)
     }
