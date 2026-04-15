@@ -548,6 +548,91 @@ impl Positive {
         }
     }
 
+    /// Checked addition with an `f64`, returning a `Result` instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `ConversionError` if `rhs` cannot be represented as a
+    /// `Decimal` (e.g. NaN, `±inf`), an `ArithmeticError` on overflow, or
+    /// an `OutOfBounds` if the result would violate the positivity
+    /// invariant.
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_add_f64(self, rhs: f64) -> Result<Positive, PositiveError> {
+        let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
+            PositiveError::conversion_error("f64", "Decimal", "value not representable as Decimal")
+        })?;
+        let result = self
+            .0
+            .checked_add(rhs_dec)
+            .ok_or_else(|| PositiveError::arithmetic_error("add_f64", "overflow"))?;
+        Positive::new_decimal(result)
+    }
+
+    /// Checked subtraction with an `f64`, returning a `Result` instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `ConversionError` if `rhs` cannot be represented as a
+    /// `Decimal`, an `ArithmeticError` on overflow, or an `OutOfBounds`
+    /// if the result would violate the positivity invariant.
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_sub_f64(self, rhs: f64) -> Result<Positive, PositiveError> {
+        let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
+            PositiveError::conversion_error("f64", "Decimal", "value not representable as Decimal")
+        })?;
+        let result = self
+            .0
+            .checked_sub(rhs_dec)
+            .ok_or_else(|| PositiveError::arithmetic_error("sub_f64", "overflow"))?;
+        Positive::new_decimal(result)
+    }
+
+    /// Checked multiplication with an `f64`, returning a `Result` instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `ConversionError` if `rhs` cannot be represented as a
+    /// `Decimal`, an `ArithmeticError` on overflow, or an `OutOfBounds`
+    /// if the result would violate the positivity invariant (for example
+    /// when `rhs` is negative).
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_mul_f64(self, rhs: f64) -> Result<Positive, PositiveError> {
+        let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
+            PositiveError::conversion_error("f64", "Decimal", "value not representable as Decimal")
+        })?;
+        let result = self
+            .0
+            .checked_mul(rhs_dec)
+            .ok_or_else(|| PositiveError::arithmetic_error("mul_f64", "overflow"))?;
+        Positive::new_decimal(result)
+    }
+
+    /// Checked division by an `f64`, returning a `Result` instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `ConversionError` if `rhs` cannot be represented as a
+    /// `Decimal`, an `ArithmeticError` on overflow or division by zero,
+    /// or an `OutOfBounds` if the result would violate the positivity
+    /// invariant (for example when `rhs` is negative).
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_div_f64(self, rhs: f64) -> Result<Positive, PositiveError> {
+        let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
+            PositiveError::conversion_error("f64", "Decimal", "value not representable as Decimal")
+        })?;
+        if rhs_dec.is_zero() {
+            return Err(PositiveError::arithmetic_error(
+                "div_f64",
+                "division by zero",
+            ));
+        }
+        let result = self
+            .0
+            .checked_div(rhs_dec)
+            .ok_or_else(|| PositiveError::arithmetic_error("div_f64", "overflow"))?;
+        Positive::new_decimal(result)
+    }
+
     /// Checks whether the value is a multiple of another f64 value.
     #[must_use]
     pub fn is_multiple(&self, other: f64) -> bool {

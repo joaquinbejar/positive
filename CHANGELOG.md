@@ -59,6 +59,12 @@ not yet finalised; do not rely on any intermediate state.
   lift the `f64` rhs into `Decimal` once via `Decimal::from_f64` and
   stay in `Decimal` through `checked_*`, improving precision and
   avoiding the lossy hop.
+- Public checked `f64` arithmetic API on `Positive` (#22): every
+  panicking `<Op><f64>` operator now has a non-panicking
+  `Result<Positive, PositiveError>` counterpart:
+  `Positive::checked_add_f64`, `checked_sub_f64`, `checked_mul_f64`,
+  `checked_div_f64`. Required by rule 52 (checked equivalent must exist
+  for every panicking operator).
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
