@@ -18,6 +18,16 @@ not yet finalised; do not rely on any intermediate state.
 
 - `[profile.release]` with thin LTO, single codegen-unit, `opt-level = 3`,
   `strip = true`, and `debug = false` (#10).
+- `#[repr(transparent)]` on `Positive` (#11).
+- Derived `Eq`, `PartialOrd`, `Ord` on `Positive` with the canonical derive
+  ordering (#11). Manual impls removed.
+
+### Changed
+
+- **BREAKING:** the inner `Decimal` field of `Positive` is now private (#12).
+  Use `Positive::to_dec()` or `Decimal::from(positive)` to read the
+  underlying value. Migration for pattern-matching / destructuring is not
+  available; use the accessor.
 
 ## [0.4.2] - 2026-04-14
 
