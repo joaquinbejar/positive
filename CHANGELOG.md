@@ -78,6 +78,14 @@ not yet finalised; do not rely on any intermediate state.
   formatting (#25). It now rounds the underlying `Decimal` directly
   via `round_dp`, preserving precision beyond the ~15 significant
   digits of `f64`.
+- Decision recorded for #26 (serde representation): the manual
+  `Serialize`/`Deserialize` impls are retained for 0.5.0. Migrating to
+  `#[serde(transparent)]` would switch the wire format from JSON
+  numbers (`42`, `12.345`, `f64::MAX` for infinity) to JSON strings
+  (`"42"`) because `rust_decimal`'s default serde representation is
+  string-based without the optional `serde-with-float` / equivalent
+  features. Documented in `src/positive.rs`; revisit in a future
+  major version if the numeric JSON shape is no longer required.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
