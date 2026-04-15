@@ -34,6 +34,13 @@ not yet finalised; do not rely on any intermediate state.
   arithmetic methods that were missing it (#15): `Positive::new`,
   `Positive::new_decimal`, `Positive::checked_sub`, `Positive::checked_div`.
 
+### Fixed
+
+- `From<Positive> for usize` now routes through `Decimal::to_u64()`
+  instead of `Decimal::to_f64() as usize`, preserving precision for
+  large integer values (#16). The observable signature is unchanged;
+  fractional values still truncate toward zero as before.
+
 ### Changed
 
 - **BREAKING:** the inner `Decimal` field of `Positive` is now private (#12).

@@ -619,9 +619,14 @@ impl From<Positive> for f64 {
 }
 
 impl From<Positive> for usize {
+    /// Converts the underlying `Decimal` to `usize` via `to_u64`.
+    ///
+    /// Returns `0` on overflow or when the value is not representable as
+    /// `u64`. For fallible, non-lossy conversion callers should prefer
+    /// matching on `Positive::to_u64_checked()`.
     #[inline]
     fn from(value: Positive) -> Self {
-        value.0.to_f64().unwrap_or(0.0) as usize
+        value.to_dec().to_u64().unwrap_or(0) as usize
     }
 }
 

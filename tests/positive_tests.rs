@@ -738,6 +738,22 @@ fn test_from_positive_to_usize() {
 }
 
 #[test]
+fn test_from_positive_to_usize_truncates_fractional() {
+    // The conversion goes through `to_u64`, which truncates toward zero.
+    let p = pos_or_panic!(42.9);
+    let u: usize = p.into();
+    assert_eq!(u, 42);
+}
+
+#[test]
+fn test_from_positive_to_usize_large_value() {
+    use rust_decimal_macros::dec;
+    let p = positive::Positive::new_decimal(dec!(1000000)).expect("valid");
+    let u: usize = p.into();
+    assert_eq!(u, 1_000_000);
+}
+
+#[test]
 fn test_f64_partial_eq_ref_positive() {
     let p = pos_or_panic!(5.0);
     assert!(5.0 == &p);
