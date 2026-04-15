@@ -1423,3 +1423,53 @@ fn test_decimal_add_ref_positive_impl() {
     let result = d + p;
     assert_eq!(result, dec!(8.0));
 }
+
+// ===== checked_*_f64 public API (issue #22) =====
+
+#[test]
+fn test_checked_add_f64_ok() {
+    let p = pos_or_panic!(5.0);
+    let result = p.checked_add_f64(2.5).expect("ok");
+    assert_eq!(result.to_f64(), 7.5);
+}
+
+#[test]
+fn test_checked_add_f64_nan_is_conversion_error() {
+    let p = pos_or_panic!(5.0);
+    let err = p.checked_add_f64(f64::NAN).unwrap_err();
+    assert!(matches!(
+        err,
+        positive::PositiveError::ConversionError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_sub_f64_invariant_error() {
+    let p = pos_or_panic!(3.0);
+    let err = p.checked_sub_f64(5.0).unwrap_err();
+    assert!(matches!(err, positive::PositiveError::OutOfBounds { .. }));
+}
+
+#[test]
+fn test_checked_mul_f64_negative_is_invariant_error() {
+    let p = pos_or_panic!(5.0);
+    let err = p.checked_mul_f64(-2.0).unwrap_err();
+    assert!(matches!(err, positive::PositiveError::OutOfBounds { .. }));
+}
+
+#[test]
+fn test_checked_div_f64_zero_is_arithmetic_error() {
+    let p = pos_or_panic!(5.0);
+    let err = p.checked_div_f64(0.0).unwrap_err();
+    assert!(matches!(
+        err,
+        positive::PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_div_f64_ok() {
+    let p = pos_or_panic!(10.0);
+    let result = p.checked_div_f64(4.0).expect("ok");
+    assert_eq!(result.to_f64(), 2.5);
+}
