@@ -8,6 +8,22 @@
 //!
 //! This module provides commonly used numeric constants as `Positive` values,
 //! including integers, mathematical constants, and special values.
+//!
+//! # Compile-time evaluation
+//!
+//! Every `pub const` in this module is built from:
+//!
+//! 1. `rust_decimal_macros::dec!(...)` literals — expanded at compile
+//!    time into `Decimal` associated constants with no runtime cost.
+//! 2. `Decimal::ZERO` / `Decimal::ONE` / `Decimal::TWO` / `Decimal::TEN`
+//!    / `Decimal::MAX` — `const` items in `rust_decimal` itself.
+//! 3. `Positive::from_decimal_const(...)` — a `pub(crate) const fn`
+//!    crate-private wrapper that stores the value without revalidation
+//!    (safety upheld by the literal being non-negative).
+//!
+//! None of these involve runtime work, allocations, `OnceCell`,
+//! `lazy_static`, or floating-point conversion. Consumers can treat
+//! every constant as zero-cost at the point of use.
 
 use crate::Positive;
 use rust_decimal::Decimal;
