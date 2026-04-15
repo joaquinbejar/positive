@@ -86,6 +86,12 @@ not yet finalised; do not rely on any intermediate state.
   string-based without the optional `serde-with-float` / equivalent
   features. Documented in `src/positive.rs`; revisit in a future
   major version if the numeric JSON shape is no longer required.
+- Deserialization visitor no longer double-validates the positivity
+  invariant (#27). `visit_i64`, `visit_u64`, and `visit_f64` used to
+  call `is_valid_positive_value` *and* `Positive::new_decimal`
+  (which re-checks the same invariant); now they call only
+  `new_decimal`. Error messages for negative/zero inputs now come from
+  `PositiveError::OutOfBounds` rather than the bespoke custom strings.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by

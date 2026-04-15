@@ -1184,24 +1184,14 @@ impl<'de> Deserialize<'de> for Positive {
             where
                 E: serde::de::Error,
             {
-                let decimal = Decimal::from(value);
-                if !is_valid_positive_value(decimal) {
-                    Err(serde::de::Error::custom("Expected a positive integer"))
-                } else {
-                    Positive::new_decimal(decimal).map_err(serde::de::Error::custom)
-                }
+                Positive::new_decimal(Decimal::from(value)).map_err(serde::de::Error::custom)
             }
 
             fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                let decimal = Decimal::from(value);
-                if !is_valid_positive_value(decimal) {
-                    Err(serde::de::Error::custom("Expected a positive integer"))
-                } else {
-                    Positive::new_decimal(decimal).map_err(serde::de::Error::custom)
-                }
+                Positive::new_decimal(Decimal::from(value)).map_err(serde::de::Error::custom)
             }
 
             fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
@@ -1216,11 +1206,7 @@ impl<'de> Deserialize<'de> for Positive {
                 }
                 let decimal = Decimal::from_f64(value)
                     .ok_or_else(|| serde::de::Error::custom("Failed to convert f64 to Decimal"))?;
-                if !is_valid_positive_value(decimal) {
-                    Err(serde::de::Error::custom("Expected a positive float"))
-                } else {
-                    Positive::new_decimal(decimal).map_err(serde::de::Error::custom)
-                }
+                Positive::new_decimal(decimal).map_err(serde::de::Error::custom)
             }
         }
 
