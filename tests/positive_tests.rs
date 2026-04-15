@@ -181,7 +181,7 @@ fn test_positive_decimal_floor() {
 }
 
 #[test]
-#[should_panic(expected = "Cannot negate a Positive value!")]
+#[should_panic(expected = "invariant broken in neg")]
 fn test_positive_decimal_neg() {
     let a = pos_or_panic!(1.0);
     let _ = -a;
