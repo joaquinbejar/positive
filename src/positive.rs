@@ -29,7 +29,8 @@ use std::str::FromStr;
 ///
 /// When the `non-zero` feature is enabled, the value must be strictly
 /// greater than zero.
-#[derive(PartialEq, Clone, Copy, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct Positive(pub Decimal);
 
@@ -1029,28 +1030,6 @@ impl Div<&Decimal> for Positive {
 impl PartialOrd<Decimal> for Positive {
     fn partial_cmp(&self, other: &Decimal) -> Option<Ordering> {
         self.0.partial_cmp(other)
-    }
-}
-
-impl PartialOrd for Positive {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-
-    fn le(&self, other: &Self) -> bool {
-        self.0 <= other.0
-    }
-
-    fn ge(&self, other: &Self) -> bool {
-        self.0 >= other.0
-    }
-}
-
-impl Eq for Positive {}
-
-impl Ord for Positive {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.0.partial_cmp(&other.0).unwrap_or(Ordering::Equal)
     }
 }
 
