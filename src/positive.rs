@@ -1424,9 +1424,13 @@ impl PartialOrd<Decimal> for Positive {
 
 impl Neg for Positive {
     type Output = Self;
+    /// Always panics — a `Positive` cannot be negated without violating
+    /// the invariant. Routed through [`invariant_panic`] for a uniform
+    /// panic message (`"Positive invariant broken in neg: result would
+    /// be non-positive"`).
     #[inline]
     fn neg(self) -> Self::Output {
-        panic!("Cannot negate a Positive value!");
+        invariant_panic("neg")
     }
 }
 

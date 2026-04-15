@@ -70,6 +70,10 @@ not yet finalised; do not rely on any intermediate state.
   and `Positive::checked_div` / `checked_div_f64` via the crate-private
   `round_div` helper. Callers who need a different strategy can use the
   new `Positive::checked_div_with_strategy`. Rule 54.
+- `Neg for Positive` now routes through `invariant_panic("neg")`
+  instead of a bespoke `panic!(...)` string (#24). Panic message is now
+  `"Positive invariant broken in neg: result would be non-positive"`;
+  `#[should_panic]` test updated accordingly.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
