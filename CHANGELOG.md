@@ -116,6 +116,14 @@ not yet finalised; do not rely on any intermediate state.
   ladder for choosing between `new_decimal` / `new` / the macros /
   `new_unchecked`, and an explicit UB example. The function body is
   unchanged.
+- Evaluated niche optimisation for `Option<Positive>` (#33) and
+  **deferred**. `Decimal` carries no niche, so `Option<Positive>` pays
+  a discriminant byte today. A sibling `PositiveNonZero` type built on
+  `NonZeroU128` + scale would recover the niche but nothing in the
+  Criterion suites or downstream reports currently justifies the cost.
+  Full analysis lives in the local `doc/niche-optimization-proposal.md`
+  (not committed). Revisit once benchmarks or a concrete downstream
+  complaint demand it.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
