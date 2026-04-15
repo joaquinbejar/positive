@@ -124,6 +124,16 @@ not yet finalised; do not rely on any intermediate state.
   Full analysis lives in the local `doc/niche-optimization-proposal.md`
   (not committed). Revisit once benchmarks or a concrete downstream
   complaint demand it.
+
+### Removed
+
+- **BREAKING:** `impl Neg for Positive` has been removed (#34). The
+  previous implementation always panicked, so the code
+  `let y = -x;` was a trap that surfaced only at runtime. Callers now
+  get a compile-time error instead. Migration: the value you want is
+  almost certainly a `Decimal`; call `positive.to_dec().neg()` or
+  `-positive.to_dec()` explicitly. The corresponding
+  `#[should_panic]` test was removed alongside the impl.
 - `EPSILON_CMP` constant (= `1e-14`) in `crate::constants` (#17),
   precomputed once so `PartialEq<Decimal> for Positive` and
   `RelativeEq::default_max_relative` no longer multiply `EPSILON` by
