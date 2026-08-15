@@ -1944,3 +1944,154 @@ fn test_every_panicking_operator_has_a_checked_counterpart() {
     assert_eq!((a * 3.0), a.checked_mul_f64(3.0).unwrap());
     assert_eq!((a / 3.0), a.checked_div_f64(3.0).unwrap());
 }
+
+// ===== Invariant preserved on every Positive-returning path (issue #70) =====
+
+/// The headline repro: under `non-zero`, `1e-28 * 1e-28` underflows to zero.
+/// The checked API must report it rather than hand back a `Positive(0)`.
+#[cfg(feature = "non-zero")]
+#[test]
+fn test_non_zero_multiplication_underflow_is_reported() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let err = tiny.checked_mul(&tiny).unwrap_err();
+    assert!(matches!(err, PositiveError::OutOfBounds { .. }));
+}
+
+#[cfg(feature = "non-zero")]
+#[test]
+#[should_panic(expected = "Positive invariant broken in mul")]
+fn test_non_zero_multiplication_underflow_operator_panics() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let _ = tiny * tiny;
+}
+
+#[cfg(feature = "non-zero")]
+#[test]
+fn test_non_zero_division_underflow_is_reported() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let huge = Positive::new_decimal(Decimal::MAX).unwrap();
+    let err = tiny.checked_div(&huge).unwrap_err();
+    assert!(matches!(err, PositiveError::OutOfBounds { .. }));
+}
+
+#[cfg(feature = "non-zero")]
+#[test]
+#[should_panic(expected = "Positive invariant broken in div")]
+fn test_non_zero_division_underflow_operator_panics() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let huge = Positive::new_decimal(Decimal::MAX).unwrap();
+    let _ = tiny / huge;
+}
+
+// --- rounding down to zero ---
+
+#[cfg(feature = "non-zero")]
+#[test]
+#[should_panic(expected = "Positive invariant broken in floor")]
+fn test_non_zero_floor_to_zero_panics() {
+    let _ = pos_or_panic!(0.5).floor();
+}
+
+#[cfg(feature = "non-zero")]
+#[test]
+#[should_panic(expected = "Positive invariant broken in round")]
+fn test_non_zero_round_to_zero_panics() {
+    let _ = pos_or_panic!(0.4).round();
+}
+
+#[cfg(feature = "non-zero")]
+#[test]
+#[should_panic(expected = "Positive invariant broken in round_to")]
+fn test_non_zero_round_to_scale_zero_panics() {
+    let _ = pos_or_panic!(0.5).round_to(0);
+}
+
+/// Without `non-zero` the same calls are legitimate and must keep returning
+/// zero rather than panicking.
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_default_feature_rounding_to_zero_is_allowed() {
+    assert_eq!(pos_or_panic!(0.5).floor(), Positive::ZERO);
+    assert_eq!(pos_or_panic!(0.4).round(), Positive::ZERO);
+    assert_eq!(pos_or_panic!(0.5).round_to(0), Positive::ZERO);
+}
+
+// --- powers ---
+
+#[cfg(feature = "non-zero")]
+#[test]
+#[should_panic(expected = "Positive invariant broken in powu")]
+fn test_non_zero_powu_underflow_panics() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let _ = tiny.powu(2);
+}
+
+#[cfg(feature = "non-zero")]
+#[test]
+#[should_panic(expected = "Positive invariant broken in powi")]
+fn test_non_zero_powi_underflow_panics() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let _ = tiny.powi(2);
+}
+
+/// `sub_or_none` returned `Some(Positive(0))` for equal operands, which is
+/// invalid under `non-zero`.
+#[test]
+fn test_sub_or_none_equal_operands() {
+    let value = pos_or_panic!(5.0);
+    let result = value.sub_or_none(&value.to_dec());
+    #[cfg(feature = "non-zero")]
+    assert_eq!(result, None);
+    #[cfg(not(feature = "non-zero"))]
+    assert_eq!(result, Some(Positive::ZERO));
+}
+
+/// Every `Positive` a public path hands back must satisfy the invariant. This
+/// sweeps the operations the issue lists over inputs chosen to sit at the edge.
+#[test]
+fn test_positive_returning_paths_uphold_the_invariant() {
+    let values = [
+        pos_or_panic!(1.0),
+        pos_or_panic!(2.5),
+        pos_or_panic!(100.0),
+        Positive::new_decimal(Decimal::new(1, 28)).unwrap(),
+    ];
+    for value in values {
+        // Operations that cannot reduce a valid value below the bound.
+        for produced in [
+            value.ceiling(),
+            value.max(Positive::ONE),
+            value.min(Positive::ONE),
+            value.powu(1),
+            value.round_to(28),
+            value.clamp(Positive::ONE, Positive::HUNDRED),
+        ] {
+            assert!(
+                positive::is_valid_positive_value(produced.to_dec()),
+                "{produced} breaks the invariant"
+            );
+        }
+    }
+}
+
+/// `round_to_nice_number` used to route its magnitude through `Positive`,
+/// producing an invalid intermediate for every input below ten. It now works
+/// entirely in `Decimal`, so inputs below one are handled too.
+#[test]
+fn test_round_to_nice_number_below_one() {
+    let result = pos_or_panic!(0.12).round_to_nice_number();
+    assert!(positive::is_valid_positive_value(result.to_dec()));
+    assert_eq!(result, pos_or_panic!(0.1));
+}
+
+#[test]
+fn test_round_to_nice_number_below_ten_upholds_invariant() {
+    for input in [0.5_f64, 1.2, 2.5, 4.0, 8.0] {
+        let value = Positive::new(input).unwrap();
+        let result = value.round_to_nice_number();
+        assert!(
+            positive::is_valid_positive_value(result.to_dec()),
+            "{input} produced an invalid result"
+        );
+    }
+}
