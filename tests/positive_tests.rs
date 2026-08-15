@@ -451,11 +451,20 @@ fn test_sqrt() {
 }
 
 #[test]
-fn test_sqrt_checked() {
+fn test_checked_sqrt() {
     let value = pos_or_panic!(16.0);
-    let result = value.sqrt_checked();
+    let result = value.checked_sqrt();
     assert!(result.is_ok());
     assert_eq!(result.unwrap().to_f64(), 4.0);
+}
+
+/// `sqrt_checked` is deprecated in favour of `checked_sqrt` but must keep
+/// delegating to it until it is removed.
+#[test]
+#[allow(deprecated)]
+fn test_sqrt_checked_alias_matches_checked_sqrt() {
+    let value = pos_or_panic!(16.0);
+    assert_eq!(value.sqrt_checked().unwrap(), value.checked_sqrt().unwrap());
 }
 
 #[test]
@@ -631,18 +640,19 @@ fn test_round_to_nice_number() {
 }
 
 #[test]
-fn test_sqrt_checked_success() {
+fn test_checked_sqrt_success() {
     let value = pos_or_panic!(16.0);
-    let result = value.sqrt_checked();
+    let result = value.checked_sqrt();
     assert!(result.is_ok());
     assert_eq!(result.unwrap().to_f64(), 4.0);
 }
 
 #[test]
 fn test_ln() {
+    use num_traits::ToPrimitive;
     let value = pos_or_panic!(std::f64::consts::E);
-    let result = value.ln();
-    assert!((result.to_f64() - 1.0).abs() < 0.001);
+    let result: Decimal = value.ln();
+    assert!((result.to_f64().unwrap() - 1.0).abs() < 0.001);
 }
 
 #[test]
@@ -655,8 +665,8 @@ fn test_exp() {
 #[test]
 fn test_log10() {
     let value = pos_or_panic!(100.0);
-    let result = value.log10();
-    assert_eq!(result.to_f64(), 2.0);
+    let result: Decimal = value.log10();
+    assert_eq!(result, dec!(2));
 }
 
 #[test]
@@ -2201,4 +2211,211 @@ fn test_sum_trait_ref_overflow_panics() {
     let max = Positive::new_decimal(Decimal::MAX).unwrap();
     let values = [max, Positive::ONE];
     let _total: Positive = values.iter().sum();
+}
+
+// ===== Mathematical domains and checked variants (issue #73) =====
+
+/// `ln` and `log10` return `Decimal`, not `Positive`: the logarithm of a
+/// positive number is not itself necessarily positive. Earlier versions
+/// returned `-0.693…` inside a `Positive`.
+#[test]
+fn test_ln_of_sub_one_is_negative_decimal() {
+    let half = pos_or_panic!(0.5);
+    let result: Decimal = half.ln();
+    assert!(result < Decimal::ZERO);
+    assert_eq!(half.checked_ln().unwrap(), result);
+}
+
+#[test]
+fn test_log10_of_sub_one_is_negative_decimal() {
+    let half = pos_or_panic!(0.5);
+    let result: Decimal = half.log10();
+    assert!(result < Decimal::ZERO);
+    assert_eq!(half.checked_log10().unwrap(), result);
+}
+
+#[test]
+fn test_log10_of_one_is_zero() {
+    assert_eq!(Positive::ONE.checked_log10().unwrap(), Decimal::ZERO);
+    assert_eq!(Positive::ONE.checked_ln().unwrap(), Decimal::ZERO);
+}
+
+/// Zero is outside the domain of both logarithms. It is only constructible
+/// without the `non-zero` feature.
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_logarithms_of_zero_are_domain_errors() {
+    assert!(matches!(
+        Positive::ZERO.checked_ln().unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+    assert!(matches!(
+        Positive::ZERO.checked_log10().unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[cfg(not(feature = "non-zero"))]
+#[test]
+#[should_panic(expected = "Positive domain error in ln")]
+fn test_ln_of_zero_panics_with_domain_message() {
+    let _ = Positive::ZERO.ln();
+}
+
+#[cfg(not(feature = "non-zero"))]
+#[test]
+#[should_panic(expected = "Positive domain error in log10")]
+fn test_log10_of_zero_panics_with_domain_message() {
+    let _ = Positive::ZERO.log10();
+}
+
+/// `round_to_nice_number` reached `log10(0)` and panicked. Zero is already the
+/// nicest number at its own magnitude.
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_round_to_nice_number_of_zero_is_zero() {
+    assert_eq!(Positive::ZERO.round_to_nice_number(), Positive::ZERO);
+    assert_eq!(
+        Positive::ZERO.checked_round_to_nice_number().unwrap(),
+        Positive::ZERO
+    );
+}
+
+// --- powers: domain and overflow ---
+
+/// `powi` with a zero base and a negative exponent is outside the domain; it
+/// panicked inside rust_decimal before.
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_powi_zero_base_negative_exponent_is_error() {
+    assert!(matches!(
+        Positive::ZERO.checked_powi(-1).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_powi_overflow_is_error() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(matches!(
+        max.checked_powi(2).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_powu_overflow_is_error() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(matches!(
+        max.checked_powu(2).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_powd_overflow_is_error() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(matches!(
+        max.checked_powd(dec!(2)).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_pow_delegates_to_powd() {
+    let value = pos_or_panic!(2.0);
+    assert_eq!(
+        value.checked_pow(pos_or_panic!(3.0)).unwrap(),
+        value.checked_powd(dec!(3)).unwrap()
+    );
+}
+
+// --- exp ---
+
+#[test]
+fn test_checked_exp_success() {
+    let result = Positive::ONE.checked_exp().unwrap();
+    assert!(result > pos_or_panic!(2.7));
+    assert!(result < pos_or_panic!(2.8));
+}
+
+#[test]
+fn test_checked_exp_overflow_is_error() {
+    assert!(matches!(
+        pos_or_panic!(1000.0).checked_exp().unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+#[should_panic(expected = "Positive arithmetic overflow in exp")]
+fn test_exp_overflow_panics() {
+    let _ = pos_or_panic!(1000.0).exp();
+}
+
+// --- rounding: checked entry points ---
+
+#[test]
+fn test_checked_rounding_success() {
+    assert_eq!(
+        pos_or_panic!(1.9).checked_floor().unwrap(),
+        pos_or_panic!(1.0)
+    );
+    assert_eq!(
+        pos_or_panic!(1.6).checked_round().unwrap(),
+        pos_or_panic!(2.0)
+    );
+    assert_eq!(
+        pos_or_panic!(1.2345).checked_round_to(2).unwrap(),
+        pos_or_panic!(1.23)
+    );
+    assert_eq!(
+        pos_or_panic!(1.1).checked_ceiling().unwrap(),
+        pos_or_panic!(2.0)
+    );
+}
+
+/// Under `non-zero`, rounding down to zero must be reported rather than
+/// panicking when the caller asks for the checked form.
+#[cfg(feature = "non-zero")]
+#[test]
+fn test_checked_rounding_to_zero_is_out_of_bounds() {
+    assert!(matches!(
+        pos_or_panic!(0.5).checked_floor().unwrap_err(),
+        PositiveError::OutOfBounds { .. }
+    ));
+    assert!(matches!(
+        pos_or_panic!(0.4).checked_round().unwrap_err(),
+        PositiveError::OutOfBounds { .. }
+    ));
+    assert!(matches!(
+        pos_or_panic!(0.5).checked_round_to(0).unwrap_err(),
+        PositiveError::OutOfBounds { .. }
+    ));
+}
+
+/// Every panicking mathematical method must agree with its checked
+/// counterpart on the values where both succeed.
+#[test]
+fn test_math_wrappers_agree_with_checked_variants() {
+    let value = pos_or_panic!(2.5);
+    assert_eq!(value.floor(), value.checked_floor().unwrap());
+    assert_eq!(value.round(), value.checked_round().unwrap());
+    assert_eq!(value.round_to(1), value.checked_round_to(1).unwrap());
+    assert_eq!(value.ceiling(), value.checked_ceiling().unwrap());
+    assert_eq!(value.sqrt(), value.checked_sqrt().unwrap());
+    assert_eq!(value.exp(), value.checked_exp().unwrap());
+    assert_eq!(value.powi(2), value.checked_powi(2).unwrap());
+    assert_eq!(value.powu(2), value.checked_powu(2).unwrap());
+    assert_eq!(value.powd(dec!(2)), value.checked_powd(dec!(2)).unwrap());
+    assert_eq!(
+        value.pow(pos_or_panic!(2.0)),
+        value.checked_pow(pos_or_panic!(2.0)).unwrap()
+    );
+    assert_eq!(
+        value.round_to_nice_number(),
+        value.checked_round_to_nice_number().unwrap()
+    );
+    assert_eq!(value.ln(), value.checked_ln().unwrap());
+    assert_eq!(value.log10(), value.checked_log10().unwrap());
 }

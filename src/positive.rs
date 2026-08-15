@@ -9,7 +9,7 @@
 use crate::constants::{EPSILON, EPSILON_CMP};
 use crate::error::PositiveError;
 use approx::{AbsDiffEq, RelativeEq};
-use num_traits::{FromPrimitive, Pow, ToPrimitive};
+use num_traits::{FromPrimitive, ToPrimitive};
 use rust_decimal::{Decimal, MathematicalOps, RoundingStrategy};
 use rust_decimal_macros::dec;
 use serde::de::Visitor;
@@ -217,6 +217,18 @@ pub(crate) fn invariant_panic(op: &'static str) -> ! {
     panic!("Positive invariant broken in {op}: result would be non-positive")
 }
 
+/// Panics with a uniform message when a mathematical operation is applied
+/// outside its domain — the logarithm of zero, for instance.
+///
+/// Kept distinct from [`overflow_panic`] and [`invariant_panic`] because the
+/// three failures are genuinely different: the input was invalid, the result
+/// did not fit, or the result was not positive.
+#[cold]
+#[inline(never)]
+pub(crate) fn domain_panic(op: &'static str) -> ! {
+    panic!("Positive domain error in {op}: value is outside the operation's domain")
+}
+
 /// Builds a `Positive` from the result of an arithmetic or mathematical
 /// operation, validating the feature-dependent invariant first.
 ///
@@ -236,6 +248,25 @@ pub(crate) fn from_result_or_panic(value: Decimal, op: &'static str) -> Positive
         Positive(value)
     } else {
         invariant_panic(op)
+    }
+}
+
+/// Converts a checked result into the panic documented on the non-checked
+/// wrapper, preserving the distinction between an overflow and an invariant
+/// violation.
+///
+/// Every panicking mathematical method on `Positive` is a thin wrapper over
+/// its `checked_*` counterpart through this function, so the two can never
+/// disagree about what succeeds.
+#[inline]
+pub(crate) fn unwrap_or_panic(
+    result: Result<Positive, PositiveError>,
+    op: &'static str,
+) -> Positive {
+    match result {
+        Ok(value) => value,
+        Err(PositiveError::OutOfBounds { .. }) => invariant_panic(op),
+        Err(_) => overflow_panic(op),
     }
 }
 
@@ -556,54 +587,177 @@ impl Positive {
     /// Panics when the floored result would break the positivity invariant.
     /// Under the `non-zero` feature this includes every value below one, whose
     /// floor is zero — for example `0.5`. Without that feature this method
-    /// cannot panic.
+    /// cannot panic. Use [`Positive::checked_floor`] for the non-panicking
+    /// form.
     #[must_use]
     pub fn floor(&self) -> Positive {
-        from_result_or_panic(self.0.floor(), "floor")
+        unwrap_or_panic(self.checked_floor(), "floor")
+    }
+
+    /// Rounds the value down to the nearest integer, returning an error
+    /// instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::OutOfBounds`] when the floored result would
+    /// break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(1.9).checked_floor().unwrap(), pos_or_panic!(1.0));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the invariant error"]
+    pub fn checked_floor(&self) -> Result<Positive, PositiveError> {
+        Positive::new_decimal(self.0.floor())
     }
 
     /// Raises this value to an integer power.
     ///
     /// # Panics
     ///
-    /// Panics when the result would break the positivity invariant — under the
-    /// `non-zero` feature, when the power underflows to zero.
+    /// Panics when the power cannot be computed — for example a zero base with
+    /// a negative exponent — or when the result would break the positivity
+    /// invariant. Use [`Positive::checked_powi`] for the non-panicking form.
     #[must_use]
     pub fn powi(&self, n: i64) -> Positive {
-        from_result_or_panic(self.0.powi(n), "powi")
+        unwrap_or_panic(self.checked_powi(n), "powi")
+    }
+
+    /// Raises this value to an integer power, returning an error instead of
+    /// panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the power is outside
+    /// the domain — a zero base with a negative exponent — or overflows, and
+    /// [`PositiveError::OutOfBounds`] when the result would break the
+    /// positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.0).checked_powi(3).unwrap(), pos_or_panic!(8.0));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the domain error"]
+    pub fn checked_powi(&self, n: i64) -> Result<Positive, PositiveError> {
+        let result = self.0.checked_powi(n).ok_or_else(|| {
+            PositiveError::arithmetic_error("powi", "power is undefined or overflows")
+        })?;
+        Positive::new_decimal(result)
     }
 
     /// Computes the result of raising the current value to the power of the given exponent.
     ///
     /// # Panics
     ///
-    /// Panics when the result would break the positivity invariant — under the
-    /// `non-zero` feature, when the power underflows to zero.
+    /// Panics when the power cannot be computed or the result would break the
+    /// positivity invariant. Use [`Positive::checked_pow`] for the
+    /// non-panicking form.
     #[must_use]
     pub fn pow(&self, n: Positive) -> Positive {
-        from_result_or_panic(self.0.pow(n.to_dec()), "pow")
+        unwrap_or_panic(self.checked_pow(n), "pow")
+    }
+
+    /// Raises this value to a `Positive` power, returning an error instead of
+    /// panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the power is outside
+    /// the domain or overflows, and [`PositiveError::OutOfBounds`] when the
+    /// result would break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// let value = pos_or_panic!(2.0);
+    /// assert_eq!(value.checked_pow(pos_or_panic!(3.0)).unwrap(), pos_or_panic!(8.0));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the domain error"]
+    pub fn checked_pow(&self, n: Positive) -> Result<Positive, PositiveError> {
+        self.checked_powd(n.to_dec())
     }
 
     /// Raises the current value to the power of `n` using unsigned integer exponentiation.
     ///
     /// # Panics
     ///
-    /// Panics when the result would break the positivity invariant — under the
-    /// `non-zero` feature, when the power underflows to zero.
+    /// Panics when the power overflows or the result would break the
+    /// positivity invariant. Use [`Positive::checked_powu`] for the
+    /// non-panicking form.
     #[must_use]
     pub fn powu(&self, n: u64) -> Positive {
-        from_result_or_panic(self.0.powu(n), "powu")
+        unwrap_or_panic(self.checked_powu(n), "powu")
+    }
+
+    /// Raises this value to an unsigned integer power, returning an error
+    /// instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the power overflows and
+    /// [`PositiveError::OutOfBounds`] when the result would break the
+    /// positivity invariant — under the `non-zero` feature, when it underflows
+    /// to zero.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.0).checked_powu(3).unwrap(), pos_or_panic!(8.0));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the overflow error"]
+    pub fn checked_powu(&self, n: u64) -> Result<Positive, PositiveError> {
+        let result = self
+            .0
+            .checked_powu(n)
+            .ok_or_else(|| PositiveError::arithmetic_error("powu", "power overflows"))?;
+        Positive::new_decimal(result)
     }
 
     /// Raises this value to a decimal power.
     ///
     /// # Panics
     ///
-    /// Panics when the result would break the positivity invariant — under the
-    /// `non-zero` feature, when the power underflows to zero.
+    /// Panics when the power cannot be computed or the result would break the
+    /// positivity invariant. Use [`Positive::checked_powd`] for the
+    /// non-panicking form.
     #[must_use]
     pub fn powd(&self, p0: Decimal) -> Positive {
-        from_result_or_panic(self.0.powd(p0), "powd")
+        unwrap_or_panic(self.checked_powd(p0), "powd")
+    }
+
+    /// Raises this value to a decimal power, returning an error instead of
+    /// panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the power is outside
+    /// the domain or overflows, and [`PositiveError::OutOfBounds`] when the
+    /// result would break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert_eq!(pos_or_panic!(2.0).checked_powd(dec!(3)).unwrap(), pos_or_panic!(8.0));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the domain error"]
+    pub fn checked_powd(&self, p0: Decimal) -> Result<Positive, PositiveError> {
+        let result = self.0.checked_powd(p0).ok_or_else(|| {
+            PositiveError::arithmetic_error("powd", "power is undefined or overflows")
+        })?;
+        Positive::new_decimal(result)
     }
 
     /// Rounds the value to the nearest integer.
@@ -613,32 +767,98 @@ impl Positive {
     /// Panics when the rounded result would break the positivity invariant.
     /// Under the `non-zero` feature this includes every value below `0.5`,
     /// which rounds to zero. Without that feature this method cannot panic.
+    /// Use [`Positive::checked_round`] for the non-panicking form.
     #[must_use]
     pub fn round(&self) -> Positive {
-        from_result_or_panic(self.0.round(), "round")
+        unwrap_or_panic(self.checked_round(), "round")
+    }
+
+    /// Rounds the value to the nearest integer, returning an error instead of
+    /// panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::OutOfBounds`] when the rounded result would
+    /// break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(1.6).checked_round().unwrap(), pos_or_panic!(2.0));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the invariant error"]
+    pub fn checked_round(&self) -> Result<Positive, PositiveError> {
+        Positive::new_decimal(self.0.round())
     }
 
     /// Rounds the current value to a "nice" number, based on its magnitude.
     ///
-    /// The magnitude is computed entirely in `Decimal`. The previous
-    /// implementation routed it through `Positive`, which meant that for any
-    /// input below ten the intermediate magnitude was zero — an invalid
-    /// `Positive` under the `non-zero` feature — and that the final scaling
-    /// went through `magnitude.to_u64()`, which cannot represent the negative
-    /// magnitude of an input below one.
+    /// The magnitude is computed entirely in `Decimal`. Routing it through
+    /// `Positive` — as earlier versions did — meant the intermediate magnitude
+    /// was zero for every input below ten, which is invalid under the
+    /// `non-zero` feature, and that the final scaling went through
+    /// `magnitude.to_u64()`, which cannot represent the negative magnitude of
+    /// an input below one.
+    ///
+    /// A zero input maps to zero: it is already the nicest number at its own
+    /// magnitude, and `log10(0)` is undefined so there is nothing else to
+    /// compute. Under the `non-zero` feature zero is not constructible, so
+    /// that case cannot arise.
     ///
     /// # Panics
     ///
-    /// Panics for a zero input, because `log10(0)` is undefined. A
-    /// non-panicking variant is issue #73.
+    /// Panics when the scaled result overflows `Decimal` or breaks the
+    /// positivity invariant. Use [`Positive::checked_round_to_nice_number`]
+    /// for the non-panicking form.
     #[must_use]
     pub fn round_to_nice_number(&self) -> Positive {
-        let magnitude = self.0.log10().floor();
-        let ten_pow = Decimal::TEN.powd(magnitude);
-        let normalized = match dec_div(self.0, ten_pow, "round_to_nice_number") {
-            Ok(value) => value,
-            Err(_) => invariant_panic("round_to_nice_number"),
-        };
+        unwrap_or_panic(self.checked_round_to_nice_number(), "round_to_nice_number")
+    }
+
+    /// Rounds to a "nice" number, returning an error instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the magnitude cannot be
+    /// computed or the scaled result overflows, and
+    /// [`PositiveError::OutOfBounds`] when the result would break the
+    /// positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(
+    ///     pos_or_panic!(4.0).checked_round_to_nice_number().unwrap(),
+    ///     pos_or_panic!(5.0)
+    /// );
+    /// assert_eq!(
+    ///     pos_or_panic!(0.12).checked_round_to_nice_number().unwrap(),
+    ///     pos_or_panic!(0.1)
+    /// );
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the domain error"]
+    pub fn checked_round_to_nice_number(&self) -> Result<Positive, PositiveError> {
+        if self.0.is_zero() {
+            return Positive::new_decimal(Decimal::ZERO);
+        }
+        let magnitude = self
+            .0
+            .checked_log10()
+            .ok_or_else(|| {
+                PositiveError::arithmetic_error(
+                    "round_to_nice_number",
+                    "base-10 logarithm is undefined for this value",
+                )
+            })?
+            .floor();
+        let ten_pow = Decimal::TEN.checked_powd(magnitude).ok_or_else(|| {
+            PositiveError::arithmetic_error("round_to_nice_number", "magnitude overflows")
+        })?;
+        let normalized = dec_div(self.0, ten_pow, "round_to_nice_number")?;
         let nice_number = if normalized < dec!(1.5) {
             Decimal::ONE
         } else if normalized < dec!(3.0) {
@@ -648,39 +868,161 @@ impl Positive {
         } else {
             dec!(10)
         };
-        match dec_mul(nice_number, ten_pow, "round_to_nice_number") {
-            Ok(value) => from_result_or_panic(value, "round_to_nice_number"),
-            Err(_) => overflow_panic("round_to_nice_number"),
-        }
+        Positive::new_decimal(dec_mul(nice_number, ten_pow, "round_to_nice_number")?)
     }
 
     /// Calculates the square root of the value.
     ///
     /// # Panics
     ///
-    /// This method will panic if the square root calculation fails.
-    /// Use `sqrt_checked()` for a non-panicking alternative.
+    /// Panics when the square root cannot be computed, or when the result
+    /// would break the positivity invariant. Use [`Positive::checked_sqrt`]
+    /// for the non-panicking form.
     #[must_use]
     pub fn sqrt(&self) -> Positive {
-        from_result_or_panic(
-            self.0.sqrt().expect("Square root calculation failed"),
-            "sqrt",
-        )
+        unwrap_or_panic(self.checked_sqrt(), "sqrt")
     }
 
-    /// Calculates the square root, returning an error if it fails.
-    pub fn sqrt_checked(&self) -> Result<Positive, PositiveError> {
+    /// Calculates the square root, returning an error instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the square root cannot
+    /// be computed, and [`PositiveError::OutOfBounds`] when the result would
+    /// break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(16.0).checked_sqrt().unwrap(), pos_or_panic!(4.0));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_sqrt(&self) -> Result<Positive, PositiveError> {
         let root = self.0.sqrt().ok_or_else(|| {
             PositiveError::arithmetic_error("sqrt", "square root calculation failed")
         })?;
         Positive::new_decimal(root)
     }
 
+    /// Calculates the square root, returning an error if it fails.
+    ///
+    /// # Errors
+    ///
+    /// See [`Positive::checked_sqrt`].
+    #[deprecated(
+        since = "0.6.0",
+        note = "renamed to `checked_sqrt` for consistency with the rest of the checked API"
+    )]
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn sqrt_checked(&self) -> Result<Positive, PositiveError> {
+        self.checked_sqrt()
+    }
+
     /// Calculates the natural logarithm of the value.
+    ///
+    /// Returns a [`Decimal`], not a `Positive`: the logarithm of a positive
+    /// number is not itself necessarily positive. `ln(0.5)` is `-0.693…`, and
+    /// earlier versions returned that inside a `Positive`, silently breaking
+    /// the type's central guarantee.
+    ///
+    /// # Panics
+    ///
+    /// Panics for a zero input, for which the natural logarithm is undefined.
+    /// Zero is not constructible under the `non-zero` feature, so this cannot
+    /// happen there. Use [`Positive::checked_ln`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal::Decimal;
+    ///
+    /// let half = pos_or_panic!(0.5);
+    /// assert!(half.ln() < Decimal::ZERO);
+    /// ```
     #[inline]
     #[must_use]
-    pub fn ln(&self) -> Positive {
-        from_result_or_panic(self.0.ln(), "ln")
+    pub fn ln(&self) -> Decimal {
+        match self.checked_ln() {
+            Ok(value) => value,
+            Err(_) => domain_panic("ln"),
+        }
+    }
+
+    /// Calculates the natural logarithm, returning an error instead of
+    /// panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the logarithm is
+    /// undefined for the value — that is, for zero.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, PositiveError};
+    ///
+    /// assert!(Positive::ONE.checked_ln().unwrap().is_zero());
+    /// ```
+    #[inline]
+    #[must_use = "checked mathematics returns a Result; ignoring it silences the domain error"]
+    pub fn checked_ln(&self) -> Result<Decimal, PositiveError> {
+        self.0.checked_ln().ok_or_else(|| {
+            PositiveError::arithmetic_error("ln", "natural logarithm is undefined for zero")
+        })
+    }
+
+    /// Computes the base-10 logarithm of the value.
+    ///
+    /// Returns a [`Decimal`], not a `Positive`, for the same reason as
+    /// [`Positive::ln`]: `log10(0.5)` is `-0.301…`.
+    ///
+    /// # Panics
+    ///
+    /// Panics for a zero input, for which the logarithm is undefined. Use
+    /// [`Positive::checked_log10`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert_eq!(pos_or_panic!(100.0).log10(), dec!(2));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn log10(&self) -> Decimal {
+        match self.checked_log10() {
+            Ok(value) => value,
+            Err(_) => domain_panic("log10"),
+        }
+    }
+
+    /// Computes the base-10 logarithm, returning an error instead of
+    /// panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the logarithm is
+    /// undefined for the value — that is, for zero.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert_eq!(pos_or_panic!(100.0).checked_log10().unwrap(), dec!(2));
+    /// ```
+    #[inline]
+    #[must_use = "checked mathematics returns a Result; ignoring it silences the domain error"]
+    pub fn checked_log10(&self) -> Result<Decimal, PositiveError> {
+        self.0.checked_log10().ok_or_else(|| {
+            PositiveError::arithmetic_error("log10", "base-10 logarithm is undefined for zero")
+        })
     }
 
     /// Rounds the value to a specified number of decimal places.
@@ -690,11 +1032,36 @@ impl Positive {
     /// Panics when the rounded result would break the positivity invariant.
     /// Under the `non-zero` feature this includes any value that rounds to
     /// zero at the requested scale — for example `0.5` at `round_to(0)`.
-    /// Without that feature this method cannot panic.
+    /// Without that feature this method cannot panic. Use
+    /// [`Positive::checked_round_to`] for the non-panicking form.
     #[inline]
     #[must_use]
     pub fn round_to(&self, decimal_places: u32) -> Positive {
-        from_result_or_panic(self.0.round_dp(decimal_places), "round_to")
+        unwrap_or_panic(self.checked_round_to(decimal_places), "round_to")
+    }
+
+    /// Rounds to a specified number of decimal places, returning an error
+    /// instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::OutOfBounds`] when the rounded result would
+    /// break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(
+    ///     pos_or_panic!(1.2345).checked_round_to(2).unwrap(),
+    ///     pos_or_panic!(1.23)
+    /// );
+    /// ```
+    #[inline]
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the invariant error"]
+    pub fn checked_round_to(&self, decimal_places: u32) -> Result<Positive, PositiveError> {
+        Positive::new_decimal(self.0.round_dp(decimal_places))
     }
 
     /// Formats the value with a fixed number of decimal places.
@@ -714,10 +1081,46 @@ impl Positive {
     }
 
     /// Calculates the exponential function e^x for this value.
+    ///
+    /// The result is always at least one, so it can never break the positivity
+    /// invariant; only overflow can fail.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the result overflows `Decimal`. Use
+    /// [`Positive::checked_exp`] for the non-panicking form.
     #[inline]
     #[must_use]
     pub fn exp(&self) -> Positive {
-        from_result_or_panic(self.0.exp(), "exp")
+        unwrap_or_panic(self.checked_exp(), "exp")
+    }
+
+    /// Calculates e^x, returning an error instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the result overflows
+    /// `Decimal`, which happens for inputs well below one hundred.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, PositiveError, pos_or_panic};
+    ///
+    /// assert!(Positive::ONE.checked_exp().is_ok());
+    /// assert!(matches!(
+    ///     pos_or_panic!(1000.0).checked_exp().unwrap_err(),
+    ///     PositiveError::ArithmeticError { .. }
+    /// ));
+    /// ```
+    #[inline]
+    #[must_use = "checked mathematics returns a Result; ignoring it silences the overflow error"]
+    pub fn checked_exp(&self) -> Result<Positive, PositiveError> {
+        let result = self
+            .0
+            .checked_exp()
+            .ok_or_else(|| PositiveError::arithmetic_error("exp", "result overflows"))?;
+        Positive::new_decimal(result)
     }
 
     /// Clamps the value between a minimum and maximum.
@@ -746,18 +1149,32 @@ impl Positive {
     /// Panics when the result would break the positivity invariant. For a
     /// value that already satisfies the invariant the ceiling always does too,
     /// so in practice this method does not panic; the check is present so no
-    /// `Positive`-returning path can bypass validation.
+    /// `Positive`-returning path can bypass validation. Use
+    /// [`Positive::checked_ceiling`] for the non-panicking form.
     #[inline]
     #[must_use]
     pub fn ceiling(&self) -> Positive {
-        from_result_or_panic(self.to_dec().ceil(), "ceiling")
+        unwrap_or_panic(self.checked_ceiling(), "ceiling")
     }
 
-    /// Computes the base-10 logarithm of the value.
+    /// Returns the ceiling, returning an error instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::OutOfBounds`] when the result would break the
+    /// positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(1.1).checked_ceiling().unwrap(), pos_or_panic!(2.0));
+    /// ```
     #[inline]
-    #[must_use]
-    pub fn log10(&self) -> Positive {
-        from_result_or_panic(self.0.log10(), "log10")
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the invariant error"]
+    pub fn checked_ceiling(&self) -> Result<Positive, PositiveError> {
+        Positive::new_decimal(self.0.ceil())
     }
 
     /// Subtracts a decimal value, returning zero if the result would be negative.
