@@ -67,7 +67,11 @@ fn bench_serde_roundtrip(c: &mut Criterion) {
     let integer_valued = p(dec!(12345));
     let fractional = p(dec!(12345.6789));
     let very_small = p(dec!(0.0000001));
-    let infinity = Positive::MAX;
+    // The largest value the current wire format can carry. `Positive::MAX`
+    // cannot be serialised at all until #75 replaces the scale-zero `i64`
+    // conversion, and benchmarking a value that fails to serialise would only
+    // measure the panic.
+    let infinity = p(Decimal::from(i64::MAX));
     let json_integer = serde_json::to_string(&integer_valued).expect("ser");
     let json_fractional = serde_json::to_string(&fractional).expect("ser");
     let json_small = serde_json::to_string(&very_small).expect("ser");
