@@ -36,21 +36,21 @@
 //!
 //! ```toml
 //! [dependencies]
-//! positive = "0.4"
+//! positive = "0.6"
 //! ```
 //!
 //! To require strictly positive values (excluding zero):
 //!
 //! ```toml
 //! [dependencies]
-//! positive = { version = "0.4", features = ["non-zero"] }
+//! positive = { version = "0.6", features = ["non-zero"] }
 //! ```
 //!
 //! To enable OpenAPI schema support:
 //!
 //! ```toml
 //! [dependencies]
-//! positive = { version = "0.4", features = ["utoipa"] }
+//! positive = { version = "0.6", features = ["utoipa"] }
 //! ```
 //!
 //! ## Quick Start

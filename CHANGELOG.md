@@ -7,6 +7,164 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-15
+
+Correctness release. Closes issues #70-#90, which together covered the
+crate's arithmetic, invariant, comparison, conversion, serialisation and
+documentation contracts. It is **breaking**: see *Migration* below.
+
+The theme is that the type's central guarantee — a `Positive` always
+satisfies the positivity invariant — was not actually enforced on every
+path, and several APIs advertised as non-panicking panicked. The 0.5.x
+test suite passed throughout, because it used small ordinary values.
+
+### Highlights
+
+- **The invariant holds everywhere.** Every `Positive`-returning path now
+  validates. Under `non-zero`, `1e-28 * 1e-28`, `0.5.floor()`,
+  `0.4.round()` and `0.5.round_to(0)` each used to return `Positive(0)`.
+- **Checked arithmetic no longer panics.** `checked_div` used raw
+  division and aborted on `Decimal::MAX / 1e-28`; `checked_sub`,
+  `sub_or_zero`, `sub_or_none` and `saturating_sub` used raw subtraction.
+- **Serialisation is lossless.** A 28-digit fraction lost twelve digits
+  through `f64`, and any integer above `i64::MAX` failed to serialise at
+  all.
+- **Comparison is lawful.** `positive == decimal` and `decimal ==
+  positive` could disagree, and comparison panicked at the extremes of
+  `Decimal`'s range.
+- **Zero `unsafe`,** enforced by `#![forbid(unsafe_code)]`.
+
+### Added
+
+- `Positive::checked_add`, `checked_mul`, `checked_rem`, and the mixed
+  `Decimal` family `checked_add_dec`, `checked_sub_dec`,
+  `checked_mul_dec`, `checked_div_dec` (#71).
+- `Positive::checked_sum`, generic over `Borrow<Positive>`, so owned and
+  borrowed iterators share one non-panicking aggregation entry point
+  (#72).
+- Checked variants for every fallible mathematical operation:
+  `checked_floor`, `checked_round`, `checked_round_to`,
+  `checked_ceiling`, `checked_sqrt`, `checked_exp`, `checked_powi`,
+  `checked_powu`, `checked_powd`, `checked_pow`, `checked_ln`,
+  `checked_log10`, `checked_round_to_nice_number` (#73).
+- `Positive::checked_format_fixed_places` (#81) and
+  `Positive::checked_clamp` (#82).
+- `Positive::approx_eq_dec` — the explicit, caller-supplied-tolerance
+  replacement for the epsilon comparison `==` used to perform implicitly
+  (#77).
+- `Positive::is_multiple_of_within` — likewise for multiplicity (#78).
+- `Positive::MAX` and `constants::MAX` (#76);
+  `Positive::DAYS_IN_A_YEAR` (#84).
+- `TryFrom<Positive>` for `u64`, `i64` and `usize` (#74).
+- `PartialOrd<Positive> for Decimal`, so ordering exists in both
+  directions (#77).
+- `tests/boundary_matrix.rs`: a deterministic matrix over zero, `1e-28`,
+  either side of one, `2^53 ± 1`, the integer limits, `Decimal::MAX`/`MIN`
+  and a full 28-digit fraction, asserting that no checked API unwinds,
+  every `Positive`-returning API upholds the invariant, serde round-trips
+  exactly, and comparison is symmetric and consistent (#88).
+- `make check`, a non-mutating quality gate mirroring
+  `rules/global_rules.md`, run verbatim by CI (#86); `make lint-strict`
+  (#83); `make audit` (#85).
+- `rust-version = "1.85"`, verified in CI by building the library at
+  exactly that version (#87).
+- A tracked `LICENSE` file, and `rules/global_rules.md` under version
+  control.
+
+### Changed — breaking
+
+- **`ln` and `log10` return `Decimal`, not `Positive`** (#73). The
+  logarithm of a positive number is not necessarily positive; the return
+  type was the defect.
+- **serde emits the exact decimal as a string** — `"42.5"` rather than
+  `42.5` (#75). Deserialisation still accepts the old numeric form.
+- **`PositiveError::Other` is removed**, along with its `From<&str>` /
+  `From<String>` constructors; `OutOfBounds` carries `Decimal` rather
+  than `f64`; `InvalidValue.value` is a `String`;
+  `InvalidPrecision.precision` is `u32`; `FromStr::Err` is
+  `PositiveError` rather than `String` (#80).
+- **`From<Positive> for u64` and `From<Positive> for usize` are
+  removed** — they returned `0` when the value did not fit (#74).
+- **`Positive::new_unchecked` is removed** (#79).
+- `==` against `Decimal` and against `f64` is exact; the implicit epsilon
+  is gone (#77). `is_multiple_of` is exact (#78).
+- `clamp` takes `self` by value and panics on an inverted range (#82).
+- `Display`, `Debug` and serde report the value `MAX` actually holds
+  instead of `f64::MAX` (#76).
+
+### Deprecated
+
+Removal is scheduled for the release after 0.6.0.
+
+- `Positive::INFINITY` and `constants::INFINITY` — use `MAX` (#76).
+- `saturating_sub` — saturating arithmetic hides underflow (#71).
+- `sqrt_checked` — renamed `checked_sqrt` (#73).
+- `to_i64`, `to_u64`, `to_usize` — panic for valid values out of range;
+  use `TryFrom` (#74).
+- `to_f64_lossy` — `to_f64` is infallible and identical (#74).
+- `is_multiple` — use `is_multiple_of_dec` (#78).
+
+### Fixed
+
+- `checked_div(Decimal::MAX, 1e-28)` panicked inside rust_decimal (#71).
+- `Sum` folded with raw addition and applied `unwrap_or(ZERO)`, which
+  could never observe the overflow it was meant to catch and would have
+  replaced a financial total with zero (#72).
+- `round_to_nice_number` panicked on zero and produced an invalid
+  intermediate for every input below ten (#70, #73).
+- `TryFrom<usize>` converted through `f64`, rounding every value above
+  `2^53` (#74).
+- `format_fixed_places` passed its argument straight to `format!`, so
+  `u32::MAX` requested a four-billion-character string (#81); and even a
+  valid precision of 28 overflowed `Decimal`'s internal formatting buffer
+  for a 29-digit value (#88).
+- Comparison and the `approx` implementations panicked at the extremes of
+  `Decimal`'s range (#71, #77).
+- Four RustSec advisories, and the Security Audit workflow, which had
+  failed every scheduled run since 2026-08-05 and had additionally been
+  disabled by GitHub for inactivity (#85).
+
+### Migration
+
+```rust
+// ln / log10 now return Decimal (#73)
+- let l: Positive = value.ln();
++ let l: Decimal = value.ln();
+
+// serde: the wire format is a string (#75). Old documents still load;
+// re-serialising upgrades them.
+- {"price": 42.5}
++ {"price": "42.5"}
+
+// error contract (#80)
+- let e: String = "x".parse::<Positive>().unwrap_err();
++ let e: PositiveError = "x".parse::<Positive>().unwrap_err();
+- if let PositiveError::OutOfBounds { value, .. } = e { let v: f64 = value; }
++ if let PositiveError::OutOfBounds { value, .. } = e { let v: Decimal = value; }
+
+// integer conversions (#74)
+- let n: u64 = positive.into();      // returned 0 when out of range
++ let n: u64 = u64::try_from(positive)?;
+
+// unchecked construction (#79)
+- let v = unsafe { Positive::new_unchecked(dec!(5.0)) };
++ let v = Positive::new_decimal(dec!(5.0))?;
+
+// constant rename (#76)
+- Positive::INFINITY
++ Positive::MAX
+
+// approximate comparison is now explicit (#77, #78)
+- if positive == some_decimal { .. }                       // was: within 1e-14
++ if positive.approx_eq_dec(some_decimal, EPSILON_CMP) { .. }
+```
+
+### Housekeeping
+
+Folds in the unreleased 0.5.1, which bumped the optional `utoipa`
+dependency from 5.4 to 5.5 and dropped a stale comment from
+`Cargo.toml`, and was never given a changelog entry of its own.
+
 ## [0.5.0] - 2026-04-15
 
 Major release completing milestones M2 through M7 of the performance
@@ -136,7 +294,7 @@ changes (listed under *Removed* / *Changed*). Highlights below.
   a discriminant byte today. A sibling `PositiveNonZero` type built on
   `NonZeroU128` + scale would recover the niche but nothing in the
   Criterion suites or downstream reports currently justifies the cost.
-  Full analysis lives in the local `doc/niche-optimization-proposal.md`
+  Full analysis lives in `doc/niche-optimization-proposal.md`
   (not committed). Revisit once benchmarks or a concrete downstream
   complaint demand it.
 
