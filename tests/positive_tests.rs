@@ -3117,3 +3117,103 @@ fn test_round_trip_inside_a_struct() {
     let back: Order = serde_json::from_str(&json).unwrap();
     assert_eq!(back, order);
 }
+
+// ===== Bounded formatting precision (issue #81) =====
+
+/// Existing valid formatting must be byte-for-byte unchanged.
+#[test]
+fn test_format_fixed_places_output_is_unchanged_for_valid_precision() {
+    let value = pos_or_panic!(1.2345);
+    assert_eq!(value.format_fixed_places(0), "1");
+    assert_eq!(value.format_fixed_places(1), "1.2");
+    assert_eq!(value.format_fixed_places(2), "1.23");
+    assert_eq!(value.format_fixed_places(4), "1.2345");
+    assert_eq!(value.format_fixed_places(6), "1.234500");
+
+    let whole = pos_or_panic!(42.0);
+    assert_eq!(whole.format_fixed_places(2), "42.00");
+}
+
+/// The boundary the issue names: 0 and 28 are valid, 29 and u32::MAX are not.
+#[test]
+fn test_precision_boundaries() {
+    let value = pos_or_panic!(1.5);
+
+    assert!(value.checked_format_fixed_places(0).is_ok());
+    assert!(value.checked_format_fixed_places(28).is_ok());
+    assert!(matches!(
+        value.checked_format_fixed_places(29).unwrap_err(),
+        PositiveError::InvalidPrecision { .. }
+    ));
+    assert!(matches!(
+        value.checked_format_fixed_places(u32::MAX).unwrap_err(),
+        PositiveError::InvalidPrecision { .. }
+    ));
+}
+
+#[test]
+fn test_checked_round_to_precision_boundaries() {
+    let value = pos_or_panic!(1.5);
+
+    assert!(value.checked_round_to(0).is_ok());
+    assert!(value.checked_round_to(28).is_ok());
+    assert!(matches!(
+        value.checked_round_to(29).unwrap_err(),
+        PositiveError::InvalidPrecision { .. }
+    ));
+    assert!(matches!(
+        value.checked_round_to(u32::MAX).unwrap_err(),
+        PositiveError::InvalidPrecision { .. }
+    ));
+}
+
+/// The error must be reported *before* any allocation, so an absurd precision
+/// costs nothing rather than aborting the process on OOM.
+#[test]
+fn test_absurd_precision_errors_without_allocating() {
+    let value = pos_or_panic!(1.5);
+    let err = value.checked_format_fixed_places(u32::MAX).unwrap_err();
+    match err {
+        PositiveError::InvalidPrecision { precision, .. } => assert_eq!(precision, u32::MAX),
+        other => panic!("expected InvalidPrecision, got {other:?}"),
+    }
+}
+
+#[test]
+#[should_panic(expected = "Positive precision 29 is invalid")]
+fn test_format_fixed_places_panics_above_max_scale() {
+    let _ = pos_or_panic!(1.5).format_fixed_places(29);
+}
+
+#[test]
+#[should_panic(expected = "is invalid")]
+fn test_round_to_panics_above_max_scale() {
+    let _ = pos_or_panic!(1.5).round_to(u32::MAX);
+}
+
+/// The panicking wrappers must agree with their checked counterparts wherever
+/// both succeed.
+#[test]
+fn test_precision_wrappers_agree_with_checked_variants() {
+    let value = pos_or_panic!(1.23456789);
+    for places in [0u32, 1, 2, 8, 28] {
+        assert_eq!(
+            value.format_fixed_places(places),
+            value.checked_format_fixed_places(places).unwrap()
+        );
+        assert_eq!(
+            value.round_to(places),
+            value.checked_round_to(places).unwrap()
+        );
+    }
+}
+
+/// Formatting at the full supported precision produces exactly 28 decimals.
+#[test]
+fn test_format_at_max_scale_produces_28_decimals() {
+    let value = pos_or_panic!(1.5);
+    let formatted = value.checked_format_fixed_places(28).unwrap();
+    let decimals = formatted.split('.').nth(1).expect("has a fractional part");
+    assert_eq!(decimals.len(), 28);
+    assert!(formatted.starts_with("1.5"));
+}
