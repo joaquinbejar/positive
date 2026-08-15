@@ -9,89 +9,108 @@ on:
       - main
       - 'release/**'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
-  RUSTUP_MAX_RETRIES: 3
-  RUSTUP_UPDATE_ROOT: https://static.rust-lang.org/rustup
-  RUSTUP_DIST_SERVER: https://static.rust-lang.org
   CARGO_NET_RETRY: 3
-  CARGO_NET_GIT_FETCH_WITH_CLI: true
+  RUSTUP_MAX_RETRIES: 3
 
 jobs:
+  # Portability. The crate is pure Rust over rust_decimal with no platform
+  # code, so one job per supported OS family is enough to catch a regression;
+  # the previous matrix ran two Ubuntu versions, which tested nothing the other
+  # did not.
   build:
+    name: build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
-    
     strategy:
+      fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-22.04
-          - os: ubuntu-latest
-
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
 
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Network diagnostics
-        run: |
-          echo "Testing network connectivity..."
-          ping -c 3 static.rust-lang.org || echo "Ping failed, but continuing..."
-          curl -I https://static.rust-lang.org/rustup/release-stable.toml || echo "Curl test failed, but continuing..."
-          
-      - name: Install Rust with retry
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_wait_seconds: 30
-          command: |
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component rustfmt --component clippy
-            source ~/.cargo/env
-            rustup --version
-            cargo --version
-            
-      - name: Setup Rust environment
-        run: |
-          source ~/.cargo/env
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          rustup component add rustfmt clippy
-          
-      - name: Fallback Rust installation
-        if: failure()
-        uses: dtolnay/rust-toolchain@stable
+      - name: Checkout
+        # actions/checkout v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      # One toolchain step, no curl, no retry wrapper, no failure-only
+      # fallback. The previous job installed rustup by piping curl into sh
+      # inside a retry action, then ran a second setup step, then declared a
+      # fallback `if: failure()` that could never run because the steps before
+      # it had already failed the job.
+      - name: Install Rust
+        # dtolnay/rust-toolchain 1.14
+        uses: dtolnay/rust-toolchain@e28255f972c9d51d5aeb20d5d79f4f98858dad35
         with:
           toolchain: stable
-          components: rustfmt, clippy
-          
-      - name: Verify Rust installation
-        run: |
-          rustc --version
-          cargo --version
-          rustfmt --version
-          cargo clippy --version
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v4
+        # actions/cache v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          # Keyed on the toolchain as well as the manifest: a cache built by a
+          # different rustc cannot be reused, and the previous key omitted it.
+          # ~/.cargo/bin is no longer cached, so a stale binary cannot shadow a
+          # pinned install.
+          key: ${{ runner.os }}-build-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Install dependencies
-        run: |
-          if [ "${{ matrix.container }}" = "archlinux:latest" ]; then
-            pacman -Syu --noconfirm make fontconfig pkgconf gcc
-          elif [ "${{ runner.os }}" = "Linux" ]; then
-            sudo apt-get update && sudo apt-get install -y make libfontconfig1-dev pkg-config build-essential
-          elif [ "${{ runner.os }}" = "macOS" ]; then
-            brew install make fontconfig pkg-config gcc
-          fi
+            ${{ runner.os }}-build-
 
       - name: Build
-        run: make build
+        run: cargo build --all-features --all-targets
+
+  # Minimum supported Rust version. `rust-version` in Cargo.toml is a promise
+  # to consumers, so it is verified rather than asserted.
+  #
+  # The library only: `cargo test` additionally pulls in criterion, which
+  # requires 1.86 and is a dev-dependency, so it does not constrain anyone
+  # depending on this crate.
+  msrv:
+    name: msrv (1.85, library)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # actions/checkout v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install MSRV toolchain
+        # dtolnay/rust-toolchain 1.14
+        uses: dtolnay/rust-toolchain@e28255f972c9d51d5aeb20d5d79f4f98858dad35
+        with:
+          toolchain: '1.85'
+
+      - name: Cache Rust dependencies
+        # actions/cache v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-msrv-1.85-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-msrv-1.85-
+
+      # `+1.85` overrides rust-toolchain.toml, which pins `stable` for local
+      # development; without it cargo would silently use stable here and the
+      # job would prove nothing.
+      - name: Check the library at MSRV, in every feature configuration
+        run: |
+          cargo +1.85 check --lib --all-features
+          cargo +1.85 check --lib --no-default-features
+          cargo +1.85 check --lib --features non-zero

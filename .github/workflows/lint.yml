@@ -9,6 +9,13 @@ on:
       - main
       - 'release/**'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -17,39 +24,35 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - # actions/checkout v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        # dtolnay/rust-toolchain 1.14
+        uses: dtolnay/rust-toolchain@e28255f972c9d51d5aeb20d5d79f4f98858dad35
         with:
           toolchain: stable
           components: rustfmt, clippy
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v4
+        # actions/cache v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-lint-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-lint-
         
+      # This job referenced `matrix.container`, which no strategy ever defined,
+      # so the archlinux branch was dead code and the macOS branch was
+      # unreachable on an ubuntu runner. The job runs on ubuntu-latest; that is
+      # all it needs to install.
       - name: Install dependencies
-        run: |
-          if [ "${{ matrix.container }}" = "archlinux:latest" ]; then
-            pacman -Syu --noconfirm make fontconfig pkgconf
-          elif [ "${{ runner.os }}" = "Linux" ]; then
-            sudo apt-get update && sudo apt-get install -y make libfontconfig1-dev pkg-config
-          elif [ "${{ runner.os }}" = "macOS" ]; then
-            brew install make fontconfig pkg-config
-          fi
-
-      - name: Install make
-        run: sudo apt-get install make
+        run: sudo apt-get update && sudo apt-get install -y make
 
       - name: Lint
         run: make lint
