@@ -1391,10 +1391,36 @@ fn test_positive_eq_ref_positive() {
 }
 
 #[test]
-fn test_new_unchecked() {
-    // Test new_unchecked (lines 498-499)
-    let value = unsafe { Positive::new_unchecked(dec!(42.0)) };
-    assert_eq!(value.to_f64(), 42.0);
+fn test_constants_are_still_compile_time_without_an_unchecked_constructor() {
+    // `Positive::new_unchecked` is gone. The constants still exist as `const`
+    // items, which is the property that made an unchecked public constructor
+    // look necessary in the first place.
+    const ONE: Positive = Positive::ONE;
+    const HUNDRED: Positive = Positive::HUNDRED;
+    const MAX: Positive = Positive::MAX;
+
+    assert_eq!(ONE.to_dec(), Decimal::ONE);
+    assert_eq!(HUNDRED.to_dec(), Decimal::ONE_HUNDRED);
+    assert_eq!(MAX.to_dec(), Decimal::MAX);
+
+    // The migration path for former `new_unchecked` callers is the validated
+    // constructor, which is a runtime check rather than an unchecked cast.
+    assert_eq!(Positive::new_decimal(dec!(42.0)).unwrap().to_f64(), 42.0);
+}
+
+/// Every public path that yields a `Positive` validates. There is no longer
+/// any constructor — safe or unsafe — that can produce an invalid one.
+#[test]
+fn test_no_public_constructor_can_produce_an_invalid_value() {
+    let invalid_inputs = [Decimal::NEGATIVE_ONE, Decimal::MIN, Decimal::new(-1, 28)];
+    for input in invalid_inputs {
+        assert!(Positive::new_decimal(input).is_err());
+        assert!(Positive::try_from(input).is_err());
+    }
+    assert!(Positive::new(-0.5).is_err());
+    assert!(Positive::from_str("-0.5").is_err());
+    assert!(spos!(-1.0).is_none());
+    assert!(pos!(-1.0).is_err());
 }
 
 #[test]
