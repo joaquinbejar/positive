@@ -76,7 +76,7 @@ fn main() {
     let percentage = FIFTY / HUNDRED;
     println!("50% as decimal: {}", percentage);
 
-    let compound = (ONE + pos_or_panic!(0.05)).powi(TEN.to_i64());
+    let compound = (ONE + pos_or_panic!(0.05)).powi(i64::try_from(TEN).expect("TEN fits in i64"));
     println!("Compound interest (5% for 10 years): {:.4}", compound);
 
     // Constants are also available via Positive::CONSTANT

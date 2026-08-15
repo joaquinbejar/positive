@@ -49,13 +49,13 @@ fn bench_to_primitive(c: &mut Criterion) {
         bencher.iter(|| black_box(Decimal::from(black_box(value))))
     });
     g.bench_function("to_u64", |bencher| {
-        bencher.iter(|| black_box(u64::from(black_box(value))))
+        bencher.iter(|| black_box(u64::try_from(black_box(value))))
     });
     g.bench_function("to_f64", |bencher| {
         bencher.iter(|| black_box(f64::from(black_box(value))))
     });
     g.bench_function("to_usize", |bencher| {
-        bencher.iter(|| black_box(usize::from(black_box(value))))
+        bencher.iter(|| black_box(usize::try_from(black_box(value))))
     });
     g.finish();
 }
