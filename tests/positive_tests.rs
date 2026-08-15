@@ -3377,3 +3377,148 @@ fn test_ord_clamp_on_references_also_rejects_inverted_bounds() {
     let max = pos_or_panic!(5.0);
     let _ = (&value).clamp(&min, &max);
 }
+
+// ===== Associated and module constants stay in sync (issue #84) =====
+
+/// Table-driven parity check: every constant must be reachable through both
+/// `Positive::NAME` and `constants::NAME`, and the two must be the exact same
+/// `Decimal` — not merely close.
+macro_rules! assert_constants_in_sync {
+    ($($name:ident),* $(,)?) => {{
+        let mut checked = 0usize;
+        $(
+            assert_eq!(
+                Positive::$name.to_dec(),
+                positive::constants::$name.to_dec(),
+                concat!("Positive::", stringify!($name), " and constants::", stringify!($name), " differ"),
+            );
+            assert_eq!(Positive::$name, positive::constants::$name);
+            checked += 1;
+        )*
+        checked
+    }};
+}
+
+#[test]
+fn test_all_constants_are_in_sync() {
+    let checked = assert_constants_in_sync!(
+        ONE,
+        TWO,
+        THREE,
+        FOUR,
+        FIVE,
+        SIX,
+        SEVEN,
+        EIGHT,
+        NINE,
+        TEN,
+        FIFTEEN,
+        TWENTY,
+        TWENTY_FIVE,
+        THIRTY,
+        THIRTY_FIVE,
+        FORTY,
+        FORTY_FIVE,
+        FIFTY,
+        FIFTY_FIVE,
+        SIXTY,
+        SIXTY_FIVE,
+        SEVENTY,
+        SEVENTY_FIVE,
+        EIGHTY,
+        EIGHTY_FIVE,
+        NINETY,
+        NINETY_FIVE,
+        HUNDRED,
+        TWO_HUNDRED,
+        THREE_HUNDRED,
+        FOUR_HUNDRED,
+        FIVE_HUNDRED,
+        SIX_HUNDRED,
+        SEVEN_HUNDRED,
+        EIGHT_HUNDRED,
+        NINE_HUNDRED,
+        THOUSAND,
+        TWO_THOUSAND,
+        THREE_THOUSAND,
+        FOUR_THOUSAND,
+        FIVE_THOUSAND,
+        SIX_THOUSAND,
+        SEVEN_THOUSAND,
+        EIGHT_THOUSAND,
+        NINE_THOUSAND,
+        TEN_THOUSAND,
+        PI,
+        E,
+        MAX,
+        DAYS_IN_A_YEAR
+    );
+    assert_eq!(checked, 50, "the parity table lost an entry");
+}
+
+/// `ZERO` is only valid without the `non-zero` feature, and must be gated on
+/// both access paths identically.
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_zero_is_available_and_in_sync_by_default() {
+    assert_eq!(Positive::ZERO, positive::constants::ZERO);
+    assert_eq!(Positive::ZERO.to_dec(), Decimal::ZERO);
+}
+
+/// Under `non-zero`, `ZERO` must not exist on either path. Its absence is a
+/// compile-time property; this test records the runtime consequence, which is
+/// that zero cannot be constructed at all.
+#[cfg(feature = "non-zero")]
+#[test]
+fn test_zero_is_unavailable_under_non_zero() {
+    assert!(Positive::new_decimal(Decimal::ZERO).is_err());
+}
+
+/// The deprecated alias must still agree with its replacement while it exists.
+#[test]
+#[allow(deprecated)]
+fn test_deprecated_infinity_is_in_sync_with_max() {
+    assert_eq!(Positive::INFINITY, positive::constants::INFINITY);
+    assert_eq!(Positive::INFINITY, Positive::MAX);
+}
+
+/// The real drift risk is not two constants disagreeing — every associated
+/// constant is defined as `crate::constants::NAME`, so that cannot happen.
+/// It is a module constant with **no** associated counterpart, which is how
+/// `DAYS_IN_A_YEAR` went missing.
+///
+/// This reads both sources at compile time and fails if any `pub const NAME:
+/// Positive` in `constants.rs` is not mirrored in the `impl Positive` block,
+/// so a new constant cannot be added to one side only.
+#[test]
+fn test_every_module_constant_has_an_associated_counterpart() {
+    const CONSTANTS_SRC: &str = include_str!("../src/constants.rs");
+    const POSITIVE_SRC: &str = include_str!("../src/positive.rs");
+
+    let declared: Vec<&str> = CONSTANTS_SRC
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("pub const "))
+        .filter(|rest| rest.contains(": Positive"))
+        .filter_map(|rest| rest.split(':').next())
+        .map(str::trim)
+        .collect();
+
+    assert!(
+        declared.len() >= 52,
+        "expected at least 52 module constants, found {}",
+        declared.len()
+    );
+
+    let mut missing = Vec::new();
+    for name in &declared {
+        let mirrored = format!("pub const {name}: Positive = crate::constants::{name};");
+        if !POSITIVE_SRC.contains(&mirrored) {
+            missing.push(*name);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "module constants with no associated counterpart on `Positive`: {missing:?}"
+    );
+}

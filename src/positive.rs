@@ -502,6 +502,12 @@ impl Positive {
     #[allow(deprecated)]
     pub const INFINITY: Positive = crate::constants::INFINITY;
 
+    /// Number of days in a year, in days (365, ignoring leap years).
+    ///
+    /// Mirrors [`crate::constants::DAYS_IN_A_YEAR`]. Use this for day-count
+    /// conventions that assume a fixed 365-day year, such as ACT/365.
+    pub const DAYS_IN_A_YEAR: Positive = crate::constants::DAYS_IN_A_YEAR;
+
     /// Creates a new `Positive` value from a 64-bit floating-point number.
     ///
     /// Without the `non-zero` feature, values >= 0 are accepted.
