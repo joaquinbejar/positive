@@ -216,12 +216,31 @@
 //! }
 //! ```
 //!
-//! Error variants include:
-//! - `InvalidValue` - Value cannot be represented as a valid positive decimal
-//! - `ArithmeticError` - Error during mathematical operations
-//! - `ConversionError` - Error when converting between types
-//! - `OutOfBounds` - Value exceeds defined limits
-//! - `InvalidPrecision` - Invalid decimal precision settings
+//! `PositiveError` has exactly five variants, and that set is stable across
+//! minor versions. There is no catch-all, so callers can match exhaustively
+//! without a wildcard arm:
+//!
+//! - `InvalidValue` - Input that is not a decimal at all (`NaN`, `±inf`, unparsable text)
+//! - `ArithmeticError` - Overflow, division by zero, or a result breaking the invariant
+//! - `ConversionError` - A valid value not representable in the destination type
+//! - `OutOfBounds` - A well-formed decimal outside the permitted range
+//! - `InvalidPrecision` - A decimal precision outside the range `Decimal` supports
+//!
+//! `OutOfBounds` carries exact `Decimal` values for the offending input and
+//! both bounds, so no precision is lost in the diagnostic. Under the
+//! `non-zero` feature the reported minimum is `1e-28`, the smallest strictly
+//! positive `Decimal`.
+//!
+//! Parsing follows the same contract — `FromStr` fails with a `PositiveError`
+//! that preserves the offending input:
+//!
+//! ```rust
+//! use positive::{Positive, PositiveError};
+//! use std::str::FromStr;
+//!
+//! let err = Positive::from_str("not a number").unwrap_err();
+//! assert!(matches!(err, PositiveError::InvalidValue { .. }));
+//! ```
 //!
 //! ## Serialization
 //!

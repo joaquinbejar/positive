@@ -51,22 +51,34 @@ pub fn is_valid_positive_value(value: Decimal) -> bool {
     }
 }
 
-/// Returns the minimum bound for error messages.
+/// Returns the smallest value a `Positive` may hold under the active feature
+/// configuration, as an exact `Decimal`.
 ///
-/// Without the `non-zero` feature, the minimum is 0.0.
-/// With the `non-zero` feature, the minimum is the smallest representable
-/// positive f64 value.
+/// Without the `non-zero` feature the minimum is `0`. With the `non-zero`
+/// feature it is `1e-28`, the smallest strictly positive value
+/// `rust_decimal::Decimal` can represent — not `f64::MIN_POSITIVE`, which is a
+/// binary float bound with no bearing on `Decimal`'s range and which earlier
+/// versions reported here incorrectly.
 #[inline]
 #[must_use]
-fn min_bound() -> f64 {
+pub(crate) fn min_bound() -> Decimal {
     #[cfg(feature = "non-zero")]
     {
-        f64::MIN_POSITIVE
+        Decimal::new(1, 28)
     }
     #[cfg(not(feature = "non-zero"))]
     {
-        0.0
+        Decimal::ZERO
     }
+}
+
+/// Returns the largest value a `Positive` may hold, as an exact `Decimal`.
+///
+/// This is `Decimal::MAX` under every feature configuration.
+#[inline]
+#[must_use]
+pub(crate) fn max_bound() -> Decimal {
+    Decimal::MAX
 }
 
 /// Determines if the given type parameter `T` is the `Positive` type.
@@ -233,21 +245,50 @@ impl Positive {
     ///
     /// Without the `non-zero` feature, values >= 0 are accepted.
     /// With the `non-zero` feature, only values > 0 are accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::InvalidValue`] when `value` is `NaN` or
+    /// infinite, [`PositiveError::ConversionError`] when it is finite but
+    /// outside the range `Decimal` can represent, and
+    /// [`PositiveError::OutOfBounds`] when it converts cleanly but breaks the
+    /// positivity invariant. The `OutOfBounds` bounds are exact `Decimal`
+    /// values reflecting the active feature configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, PositiveError};
+    ///
+    /// assert!(Positive::new(1.5).is_ok());
+    /// assert!(matches!(
+    ///     Positive::new(-1.0).unwrap_err(),
+    ///     PositiveError::OutOfBounds { .. }
+    /// ));
+    /// assert!(matches!(
+    ///     Positive::new(f64::NAN).unwrap_err(),
+    ///     PositiveError::InvalidValue { .. }
+    /// ));
+    /// ```
     #[must_use = "constructor returns a Result; ignoring the Positive discards a validated invariant"]
     pub fn new(value: f64) -> Result<Self, PositiveError> {
-        let dec = Decimal::from_f64(value);
-        match dec {
-            Some(value) if is_valid_positive_value(value) => Ok(Positive(value)),
-            Some(value) => Err(PositiveError::OutOfBounds {
-                value: value.to_f64().unwrap_or(0.0),
-                min: min_bound(),
-                max: f64::MAX,
-            }),
-            None => Err(PositiveError::ConversionError {
-                from_type: "f64".to_string(),
-                to_type: "Positive".to_string(),
-                reason: "failed to parse Decimal".to_string(),
-            }),
+        if value.is_nan() {
+            return Err(PositiveError::invalid_value("NaN", "value is not a number"));
+        }
+        if value.is_infinite() {
+            return Err(PositiveError::invalid_value(
+                &value.to_string(),
+                "value is infinite and has no decimal representation",
+            ));
+        }
+        match Decimal::from_f64(value) {
+            Some(dec) if is_valid_positive_value(dec) => Ok(Positive(dec)),
+            Some(dec) => Err(PositiveError::out_of_bounds(dec, min_bound(), max_bound())),
+            None => Err(PositiveError::conversion_error(
+                "f64",
+                "Positive",
+                "value is outside the range representable as a decimal",
+            )),
         }
     }
 
@@ -255,16 +296,35 @@ impl Positive {
     ///
     /// Without the `non-zero` feature, values >= 0 are accepted.
     /// With the `non-zero` feature, only values > 0 are accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::OutOfBounds`] when `value` breaks the
+    /// positivity invariant. The reported value and both bounds are exact
+    /// `Decimal`s, so no precision is lost in the diagnostic.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, PositiveError};
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert!(Positive::new_decimal(dec!(1.5)).is_ok());
+    /// assert!(matches!(
+    ///     Positive::new_decimal(dec!(-1)).unwrap_err(),
+    ///     PositiveError::OutOfBounds { .. }
+    /// ));
+    /// ```
     #[must_use = "constructor returns a Result; ignoring the Positive discards a validated invariant"]
     pub fn new_decimal(value: Decimal) -> Result<Self, PositiveError> {
         if is_valid_positive_value(value) {
             Ok(Positive(value))
         } else {
-            Err(PositiveError::OutOfBounds {
-                value: value.to_f64().unwrap_or(0.0),
-                min: min_bound(),
-                max: f64::INFINITY,
-            })
+            Err(PositiveError::out_of_bounds(
+                value,
+                min_bound(),
+                max_bound(),
+            ))
         }
     }
 
@@ -952,12 +1012,41 @@ impl Add<Positive> for f64 {
 }
 
 impl FromStr for Positive {
-    type Err = String;
+    type Err = PositiveError;
+
+    /// Parses a `Positive` from its decimal text representation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::InvalidValue`] when `s` is not a well-formed
+    /// decimal, carrying the offending input verbatim, and
+    /// [`PositiveError::OutOfBounds`] when it parses but breaks the positivity
+    /// invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, PositiveError};
+    /// use std::str::FromStr;
+    ///
+    /// assert!(Positive::from_str("1.5").is_ok());
+    ///
+    /// let err = Positive::from_str("not a number").unwrap_err();
+    /// assert!(matches!(err, PositiveError::InvalidValue { .. }));
+    /// assert!(err.to_string().contains("not a number"));
+    ///
+    /// assert!(matches!(
+    ///     Positive::from_str("-1.5").unwrap_err(),
+    ///     PositiveError::OutOfBounds { .. }
+    /// ));
+    /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.parse::<Decimal>() {
-            Ok(value) if is_valid_positive_value(value) => Ok(Positive(value)),
-            Ok(value) => Err(format!("Value must be positive, got {value}")),
-            Err(e) => Err(format!("Failed to parse as Decimal: {e}")),
+            Ok(value) => Positive::new_decimal(value),
+            Err(e) => Err(PositiveError::invalid_value(
+                s,
+                &format!("failed to parse as decimal: {e}"),
+            )),
         }
     }
 }
