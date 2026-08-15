@@ -583,6 +583,15 @@ impl Positive {
     }
 
     /// Returns the inner `Decimal` value.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert_eq!(pos_or_panic!(2.5).value(), dec!(2.5));
+    /// ```
     #[inline]
     #[must_use]
     pub fn value(&self) -> Decimal {
@@ -590,6 +599,15 @@ impl Positive {
     }
 
     /// Returns the inner `Decimal` value (alias for `value()`).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert_eq!(pos_or_panic!(2.5).to_dec(), dec!(2.5));
+    /// ```
     #[inline]
     #[must_use]
     pub fn to_dec(&self) -> Decimal {
@@ -597,6 +615,16 @@ impl Positive {
     }
 
     /// Returns the inner `Decimal` ref.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let value = pos_or_panic!(2.5);
+    /// assert_eq!(*value.to_dec_ref(), dec!(2.5));
+    /// ```
     #[inline]
     #[must_use]
     pub fn to_dec_ref(&self) -> &Decimal {
@@ -632,6 +660,14 @@ impl Positive {
     ///
     /// Retained for source compatibility; it always returns `Some`, because
     /// the conversion cannot fail. Prefer [`Positive::to_f64`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.5).to_f64_checked(), Some(2.5));
+    /// ```
     #[inline]
     #[must_use]
     pub fn to_f64_checked(&self) -> Option<f64> {
@@ -644,6 +680,14 @@ impl Positive {
     ///
     /// There is no failure case to fall back from: [`Positive::to_f64`] is
     /// infallible and returns the same value.
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #![allow(deprecated)]
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.5).to_f64_lossy(), 2.5);
+    /// ```
     #[deprecated(
         since = "0.6.0",
         note = "`to_f64` is infallible and returns the same value; this alias will be removed after 0.6.0"
@@ -665,6 +709,14 @@ impl Positive {
     /// # Panics
     ///
     /// Panics when the truncated value does not fit in an `i64`.
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #![allow(deprecated)]
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(42.9).to_i64(), 42);
+    /// ```
     #[deprecated(
         since = "0.6.0",
         note = "panics for valid values above i64::MAX; use `i64::try_from(value)` or `to_i64_checked`"
@@ -680,6 +732,16 @@ impl Positive {
     /// Converts the value to i64, returning None if it does not fit.
     ///
     /// Any fraction is truncated toward zero.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, pos_or_panic};
+    /// use rust_decimal::Decimal;
+    ///
+    /// assert_eq!(pos_or_panic!(42.9).to_i64_checked(), Some(42));
+    /// assert_eq!(Positive::MAX.to_i64_checked(), None);
+    /// ```
     #[inline]
     #[must_use]
     pub fn to_i64_checked(&self) -> Option<i64> {
@@ -697,6 +759,14 @@ impl Positive {
     /// # Panics
     ///
     /// Panics when the truncated value does not fit in a `u64`.
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #![allow(deprecated)]
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(42.9).to_u64(), 42);
+    /// ```
     #[deprecated(
         since = "0.6.0",
         note = "panics for valid values above u64::MAX; use `u64::try_from(value)` or `to_u64_checked`"
@@ -712,6 +782,15 @@ impl Positive {
     /// Converts the value to u64, returning None if it does not fit.
     ///
     /// Any fraction is truncated toward zero.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, pos_or_panic};
+    ///
+    /// assert_eq!(pos_or_panic!(42.9).to_u64_checked(), Some(42));
+    /// assert_eq!(Positive::MAX.to_u64_checked(), None);
+    /// ```
     #[inline]
     #[must_use]
     pub fn to_u64_checked(&self) -> Option<u64> {
@@ -729,6 +808,14 @@ impl Positive {
     /// # Panics
     ///
     /// Panics when the truncated value does not fit in a `usize`.
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #![allow(deprecated)]
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(42.9).to_usize(), 42);
+    /// ```
     #[deprecated(
         since = "0.6.0",
         note = "panics for valid values above usize::MAX; use `usize::try_from(value)` or `to_usize_checked`"
@@ -744,6 +831,15 @@ impl Positive {
     /// Converts the value to usize, returning None if it does not fit.
     ///
     /// Any fraction is truncated toward zero.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, pos_or_panic};
+    ///
+    /// assert_eq!(pos_or_panic!(42.9).to_usize_checked(), Some(42));
+    /// assert_eq!(Positive::MAX.to_usize_checked(), None);
+    /// ```
     #[inline]
     #[must_use]
     pub fn to_usize_checked(&self) -> Option<usize> {
@@ -751,12 +847,28 @@ impl Positive {
     }
 
     /// Returns the maximum of two `Positive` values.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.0).max(pos_or_panic!(5.0)), pos_or_panic!(5.0));
+    /// ```
     #[must_use]
     pub fn max(self, other: Positive) -> Positive {
         if self.0 > other.0 { self } else { other }
     }
 
     /// Returns the minimum of two `Positive` values.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.0).min(pos_or_panic!(5.0)), pos_or_panic!(2.0));
+    /// ```
     #[must_use]
     pub fn min(self, other: Positive) -> Positive {
         if self.0 < other.0 { self } else { other }
@@ -771,6 +883,14 @@ impl Positive {
     /// floor is zero — for example `0.5`. Without that feature this method
     /// cannot panic. Use [`Positive::checked_floor`] for the non-panicking
     /// form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(1.9).floor(), pos_or_panic!(1.0));
+    /// ```
     #[must_use]
     pub fn floor(&self) -> Positive {
         unwrap_or_panic(self.checked_floor(), "floor")
@@ -803,6 +923,14 @@ impl Positive {
     /// Panics when the power cannot be computed — for example a zero base with
     /// a negative exponent — or when the result would break the positivity
     /// invariant. Use [`Positive::checked_powi`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.0).powi(3), pos_or_panic!(8.0));
+    /// ```
     #[must_use]
     pub fn powi(&self, n: i64) -> Positive {
         unwrap_or_panic(self.checked_powi(n), "powi")
@@ -840,6 +968,14 @@ impl Positive {
     /// Panics when the power cannot be computed or the result would break the
     /// positivity invariant. Use [`Positive::checked_pow`] for the
     /// non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.0).pow(pos_or_panic!(3.0)), pos_or_panic!(8.0));
+    /// ```
     #[must_use]
     pub fn pow(&self, n: Positive) -> Positive {
         unwrap_or_panic(self.checked_pow(n), "pow")
@@ -874,6 +1010,14 @@ impl Positive {
     /// Panics when the power overflows or the result would break the
     /// positivity invariant. Use [`Positive::checked_powu`] for the
     /// non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.0).powu(3), pos_or_panic!(8.0));
+    /// ```
     #[must_use]
     pub fn powu(&self, n: u64) -> Positive {
         unwrap_or_panic(self.checked_powu(n), "powu")
@@ -912,6 +1056,15 @@ impl Positive {
     /// Panics when the power cannot be computed or the result would break the
     /// positivity invariant. Use [`Positive::checked_powd`] for the
     /// non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert_eq!(pos_or_panic!(2.0).powd(dec!(3)), pos_or_panic!(8.0));
+    /// ```
     #[must_use]
     pub fn powd(&self, p0: Decimal) -> Positive {
         unwrap_or_panic(self.checked_powd(p0), "powd")
@@ -956,6 +1109,14 @@ impl Positive {
     /// Under the `non-zero` feature this includes every value below `0.5`,
     /// which rounds to zero. Without that feature this method cannot panic.
     /// Use [`Positive::checked_round`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(1.6).round(), pos_or_panic!(2.0));
+    /// ```
     #[must_use]
     pub fn round(&self) -> Positive {
         unwrap_or_panic(self.checked_round(), "round")
@@ -1000,6 +1161,15 @@ impl Positive {
     /// Panics when the scaled result overflows `Decimal` or breaks the
     /// positivity invariant. Use [`Positive::checked_round_to_nice_number`]
     /// for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(4.0).round_to_nice_number(), pos_or_panic!(5.0));
+    /// assert_eq!(pos_or_panic!(0.12).round_to_nice_number(), pos_or_panic!(0.1));
+    /// ```
     #[must_use]
     pub fn round_to_nice_number(&self) -> Positive {
         unwrap_or_panic(self.checked_round_to_nice_number(), "round_to_nice_number")
@@ -1066,6 +1236,14 @@ impl Positive {
     /// Panics when the square root cannot be computed, or when the result
     /// would break the positivity invariant. Use [`Positive::checked_sqrt`]
     /// for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(16.0).sqrt(), pos_or_panic!(4.0));
+    /// ```
     #[must_use]
     pub fn sqrt(&self) -> Positive {
         unwrap_or_panic(self.checked_sqrt(), "sqrt")
@@ -1099,6 +1277,14 @@ impl Positive {
     /// # Errors
     ///
     /// See [`Positive::checked_sqrt`].
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #![allow(deprecated)]
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(16.0).sqrt_checked().unwrap(), pos_or_panic!(4.0));
+    /// ```
     #[deprecated(
         since = "0.6.0",
         note = "renamed to `checked_sqrt` for consistency with the rest of the checked API"
@@ -1222,6 +1408,14 @@ impl Positive {
     /// zero at the requested scale — for example `0.5` at `round_to(0)`.
     /// Without that feature this method cannot panic. Use
     /// [`Positive::checked_round_to`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(1.2345).round_to(2), pos_or_panic!(1.23));
+    /// ```
     #[inline]
     #[must_use]
     pub fn round_to(&self, decimal_places: u32) -> Positive {
@@ -1359,6 +1553,14 @@ impl Positive {
     ///
     /// Panics when the result overflows `Decimal`. Use
     /// [`Positive::checked_exp`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::Positive;
+    ///
+    /// assert!(Positive::ONE.exp() > positive::pos_or_panic!(2.7));
+    /// ```
     #[inline]
     #[must_use]
     pub fn exp(&self) -> Positive {
@@ -1473,6 +1675,14 @@ impl Positive {
     }
 
     /// Checks if the value is exactly zero.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, pos_or_panic};
+    ///
+    /// assert!(!pos_or_panic!(2.5).is_zero());
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_zero(&self) -> bool {
@@ -1522,6 +1732,14 @@ impl Positive {
     /// so in practice this method does not panic; the check is present so no
     /// `Positive`-returning path can bypass validation. Use
     /// [`Positive::checked_ceiling`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(1.1).ceiling(), pos_or_panic!(2.0));
+    /// ```
     #[inline]
     #[must_use]
     pub fn ceiling(&self) -> Positive {
@@ -1559,6 +1777,16 @@ impl Positive {
     /// difference too large to represent is an overflow, not a negative one,
     /// and flooring it at zero would silently corrupt the result. Use
     /// [`Positive::checked_sub_dec`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, pos_or_panic};
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert_eq!(pos_or_panic!(5.0).sub_or_zero(&dec!(2)), pos_or_panic!(3.0));
+    /// assert_eq!(pos_or_panic!(5.0).sub_or_zero(&dec!(9)), Positive::ZERO);
+    /// ```
     #[cfg(not(feature = "non-zero"))]
     #[must_use]
     #[deprecated(
@@ -1580,6 +1808,16 @@ impl Positive {
     ///
     /// Also returns `None` when the subtraction would overflow `Decimal`, so
     /// this method cannot panic for any input.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert_eq!(pos_or_panic!(5.0).sub_or_none(&dec!(2)), Some(pos_or_panic!(3.0)));
+    /// assert_eq!(pos_or_panic!(5.0).sub_or_none(&dec!(9)), None);
+    /// ```
     #[must_use]
     pub fn sub_or_none(&self, other: &Decimal) -> Option<Positive> {
         if &self.0 >= other {
@@ -1694,6 +1932,17 @@ impl Positive {
     /// caller wants and the intent should be visible at the call site.
     ///
     /// Scheduled for removal in the release following 0.6.0.
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #![allow(deprecated)]
+    /// use positive::{Positive, pos_or_panic};
+    ///
+    /// assert_eq!(
+    ///     pos_or_panic!(5.0).saturating_sub(&pos_or_panic!(9.0)),
+    ///     Positive::ZERO
+    /// );
+    /// ```
     #[cfg(not(feature = "non-zero"))]
     #[deprecated(
         since = "0.6.0",
@@ -1966,6 +2215,15 @@ impl Positive {
     /// `Decimal` (e.g. NaN, `±inf`), an `ArithmeticError` on overflow, or
     /// an `OutOfBounds` if the result would violate the positivity
     /// invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(5.0).checked_add_f64(2.5).unwrap(), pos_or_panic!(7.5));
+    /// assert!(pos_or_panic!(5.0).checked_add_f64(f64::NAN).is_err());
+    /// ```
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
     pub fn checked_add_f64(self, rhs: f64) -> Result<Positive, PositiveError> {
         let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
@@ -1981,6 +2239,15 @@ impl Positive {
     /// Returns a `ConversionError` if `rhs` cannot be represented as a
     /// `Decimal`, an `ArithmeticError` on overflow, or an `OutOfBounds`
     /// if the result would violate the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(5.0).checked_sub_f64(1.5).unwrap(), pos_or_panic!(3.5));
+    /// assert!(pos_or_panic!(5.0).checked_sub_f64(9.0).is_err());
+    /// ```
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
     pub fn checked_sub_f64(self, rhs: f64) -> Result<Positive, PositiveError> {
         let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
@@ -1997,6 +2264,15 @@ impl Positive {
     /// `Decimal`, an `ArithmeticError` on overflow, or an `OutOfBounds`
     /// if the result would violate the positivity invariant (for example
     /// when `rhs` is negative).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(4.0).checked_mul_f64(2.5).unwrap(), pos_or_panic!(10.0));
+    /// assert!(pos_or_panic!(4.0).checked_mul_f64(-1.0).is_err());
+    /// ```
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
     pub fn checked_mul_f64(self, rhs: f64) -> Result<Positive, PositiveError> {
         let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
@@ -2013,6 +2289,15 @@ impl Positive {
     /// `Decimal`, an `ArithmeticError` on overflow or division by zero,
     /// or an `OutOfBounds` if the result would violate the positivity
     /// invariant (for example when `rhs` is negative).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(10.0).checked_div_f64(4.0).unwrap(), pos_or_panic!(2.5));
+    /// assert!(pos_or_panic!(10.0).checked_div_f64(0.0).is_err());
+    /// ```
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
     pub fn checked_div_f64(self, rhs: f64) -> Result<Positive, PositiveError> {
         let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
@@ -2042,6 +2327,15 @@ impl Positive {
     /// Scheduled for removal in the release following 0.6.0. Use
     /// [`Positive::is_multiple_of_dec`] or [`Positive::is_multiple_of`], both
     /// of which are exact.
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #![allow(deprecated)]
+    /// use positive::pos_or_panic;
+    ///
+    /// assert!(pos_or_panic!(15.0).is_multiple(5.0));
+    /// assert!(!pos_or_panic!(15.0).is_multiple(0.0));
+    /// ```
     #[deprecated(
         since = "0.5.0",
         note = "use `is_multiple_of_dec` for Decimal-native precision; removal is scheduled for the release after 0.6.0"
