@@ -1,7 +1,7 @@
 //! Formatting and serde benchmarks for the `Positive` type.
 //!
 //! Covers `Display`, `Debug`, `format_fixed_places`, and JSON round-trip for
-//! integer-valued, fractional, very small, and `Positive::INFINITY` inputs.
+//! integer-valued, fractional, very small, and `Positive::MAX` inputs.
 
 use std::hint::black_box;
 
@@ -18,7 +18,7 @@ fn bench_display(c: &mut Criterion) {
     let integer_valued = p(dec!(12345));
     let fractional = p(dec!(12345.6789));
     let very_small = p(dec!(0.0000001));
-    let infinity = Positive::INFINITY;
+    let infinity = Positive::MAX;
     let mut g = c.benchmark_group("fmt/display");
     g.bench_function("integer", |bencher| {
         bencher.iter(|| black_box(format!("{}", black_box(integer_valued))))
@@ -38,7 +38,7 @@ fn bench_display(c: &mut Criterion) {
 fn bench_debug(c: &mut Criterion) {
     let integer_valued = p(dec!(12345));
     let fractional = p(dec!(12345.6789));
-    let infinity = Positive::INFINITY;
+    let infinity = Positive::MAX;
     let mut g = c.benchmark_group("fmt/debug");
     g.bench_function("integer", |bencher| {
         bencher.iter(|| black_box(format!("{:?}", black_box(integer_valued))))
@@ -67,7 +67,7 @@ fn bench_serde_roundtrip(c: &mut Criterion) {
     let integer_valued = p(dec!(12345));
     let fractional = p(dec!(12345.6789));
     let very_small = p(dec!(0.0000001));
-    let infinity = Positive::INFINITY;
+    let infinity = Positive::MAX;
     let json_integer = serde_json::to_string(&integer_valued).expect("ser");
     let json_fractional = serde_json::to_string(&fractional).expect("ser");
     let json_small = serde_json::to_string(&very_small).expect("ser");

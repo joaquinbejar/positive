@@ -63,7 +63,7 @@ fn main() {
 
     // Special values
     println!("\n--- Special Values ---");
-    println!("INFINITY = {}", INFINITY);
+    println!("MAX = {}", MAX);
     println!("EPSILON  = {}", EPSILON);
 
     // Using constants in calculations

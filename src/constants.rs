@@ -216,7 +216,26 @@ pub const EPSILON: Decimal = dec!(1e-16);
 /// every `PartialEq<Decimal>` call.
 pub const EPSILON_CMP: Decimal = dec!(1e-14);
 
+/// The largest value a `Positive` can hold: `Decimal::MAX`
+/// (79,228,162,514,264,337,593,543,950,335).
+///
+/// This is a real maximum, not an infinity. `Decimal` has no infinite value,
+/// and every operation on this constant — arithmetic, ordering, `Display`,
+/// serialisation — treats it as the finite number it is.
+pub const MAX: Positive = Positive::from_decimal_const(Decimal::MAX);
+
 /// Represents the maximum positive value possible (effectively infinity).
+///
+/// # Deprecated
+///
+/// The name is misleading and the behaviour was inconsistent with it: the
+/// value is `Decimal::MAX`, yet `Display`, `Debug` and serialisation all
+/// reported `f64::MAX` — a number roughly 10^279 times larger. Use [`MAX`],
+/// which is the same value under a name that matches what it is.
+#[deprecated(
+    since = "0.6.0",
+    note = "renamed to `MAX`: the value is Decimal::MAX, not an infinity, and Decimal has no infinite value"
+)]
 pub const INFINITY: Positive = Positive::from_decimal_const(Decimal::MAX);
 
 /// Number of days in a year.

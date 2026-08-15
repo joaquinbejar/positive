@@ -899,10 +899,12 @@ fn test_ref_positive_partial_ord_f64() {
 }
 
 #[test]
-fn test_display_infinity() {
-    let p = Positive::INFINITY;
+fn test_display_max_renders_the_value_it_holds() {
+    let p = Positive::MAX;
     let s = format!("{p}");
-    assert_eq!(s, format!("{}", f64::MAX));
+    assert_eq!(s, "79228162514264337593543950335");
+    // ...and not f64::MAX, which is roughly 10^279 times larger
+    assert_ne!(s, format!("{}", f64::MAX));
 }
 
 #[test]
@@ -913,10 +915,11 @@ fn test_display_integer() {
 }
 
 #[test]
-fn test_debug_infinity() {
-    let p = Positive::INFINITY;
+fn test_debug_max_renders_the_value_it_holds() {
+    let p = Positive::MAX;
     let s = format!("{p:?}");
-    assert_eq!(s, format!("{}", f64::MAX));
+    assert_eq!(s, "79228162514264337593543950335");
+    assert_ne!(s, format!("{}", f64::MAX));
 }
 
 #[test]
@@ -926,12 +929,28 @@ fn test_debug_integer() {
     assert_eq!(s, "42");
 }
 
+/// The `f64::MAX` sentinel is gone. Serialising `Positive::MAX` now reports an
+/// error instead of emitting a number roughly 10^279 times larger than the
+/// value held — wrong data replaced by an honest failure.
+///
+/// The remaining failure is the scale-0 `to_i64` path, which issue #75 (next
+/// but one in this stack) replaces with a lossless wire format.
 #[test]
-fn test_serialize_infinity() {
-    let p = Positive::INFINITY;
-    let json = serde_json::to_string(&p).unwrap();
-    // INFINITY serializes as f64::MAX in scientific notation
-    assert!(json.contains("1.7976931348623157e+308") || json.len() > 100);
+fn test_serialize_max_no_longer_emits_the_f64_sentinel() {
+    let result = serde_json::to_string(&Positive::MAX);
+    match result {
+        Ok(json) => assert!(!json.contains("1.7976931348623157e+308")),
+        Err(error) => assert!(error.to_string().contains("i64")),
+    }
+}
+
+/// Values that do fit the current wire format must serialise as themselves.
+#[test]
+fn test_serialize_large_value_within_i64_has_no_sentinel() {
+    let value = Positive::new_decimal(Decimal::from(i64::MAX)).unwrap();
+    let json = serde_json::to_string(&value).unwrap();
+    assert_eq!(json, "9223372036854775807");
+    assert!(!json.contains("1.7976931348623157e+308"));
 }
 
 #[test]
@@ -956,11 +975,13 @@ fn test_deserialize_u64() {
 }
 
 #[test]
-fn test_deserialize_positive_infinity() {
-    // Test deserializing f64::INFINITY (represented as special value)
+fn test_deserialize_f64_max_is_rejected_not_mapped_to_max() {
+    // f64::MAX used to be a sentinel that deserialised to Decimal::MAX, even
+    // though Positive::new(f64::MAX) rejects it. The two agree now.
     let json = "1.7976931348623157e+308";
-    let result: Positive = serde_json::from_str(json).unwrap();
-    assert_eq!(result, Positive::INFINITY);
+    let result: Result<Positive, _> = serde_json::from_str(json);
+    assert!(result.is_err());
+    assert!(Positive::new(f64::MAX).is_err());
 }
 
 #[test]
@@ -1331,7 +1352,7 @@ fn test_is_multiple_with_non_finite() {
 fn test_display_large_integer_no_i64() {
     // Test Display when scale is 0 but value is too large for i64 (line 752)
     // Decimal::MAX has scale 0 but cannot fit in i64
-    let large = Positive::INFINITY;
+    let large = Positive::MAX;
     let s = format!("{large}");
     assert!(!s.is_empty());
 }
@@ -1339,7 +1360,7 @@ fn test_display_large_integer_no_i64() {
 #[test]
 fn test_debug_large_integer_no_i64() {
     // Test Debug when scale is 0 but value is too large for i64 (line 771)
-    let large = Positive::INFINITY;
+    let large = Positive::MAX;
     let s = format!("{large:?}");
     assert!(!s.is_empty());
 }
@@ -2889,4 +2910,75 @@ fn test_usize_zero_is_rejected_under_non_zero() {
 #[test]
 fn test_usize_zero_is_accepted_by_default() {
     assert_eq!(Positive::try_from(0usize).unwrap(), Positive::ZERO);
+}
+
+// ===== MAX replaces the misleading INFINITY sentinel (issue #76) =====
+
+/// Numeric, ordering, display, debug and conversion semantics must all agree
+/// on the same underlying value. They did not: the value was `Decimal::MAX`
+/// but `Display`, `Debug` and serde all reported `f64::MAX`.
+#[test]
+fn test_max_semantics_agree_across_every_surface() {
+    let max = Positive::MAX;
+
+    // numeric
+    assert_eq!(max.to_dec(), Decimal::MAX);
+    // ordering
+    assert!(max >= Positive::new_decimal(Decimal::MAX).unwrap());
+    assert!(max > Positive::HUNDRED);
+    // display and debug
+    let displayed = format!("{max}");
+    let debugged = format!("{max:?}");
+    assert_eq!(displayed, "79228162514264337593543950335");
+    assert_eq!(debugged, displayed);
+    // conversion: the same number, not f64::MAX
+    assert!(max.to_f64() < f64::MAX);
+}
+
+/// `MAX` must be reachable through both access paths and be the same value.
+#[test]
+fn test_max_is_available_as_associated_and_module_constant() {
+    assert_eq!(Positive::MAX, positive::constants::MAX);
+    assert_eq!(Positive::MAX.to_dec(), Decimal::MAX);
+}
+
+/// The deprecated name must keep working and denote exactly the same value
+/// until it is removed.
+#[test]
+#[allow(deprecated)]
+fn test_infinity_still_equals_max_during_deprecation() {
+    assert_eq!(Positive::INFINITY, Positive::MAX);
+    assert_eq!(positive::constants::INFINITY, positive::constants::MAX);
+}
+
+/// `Positive::new(f64::MAX)` rejected the value while serde accepted it as a
+/// sentinel. The two agree now.
+#[test]
+fn test_f64_max_is_rejected_consistently_by_constructor_and_serde() {
+    assert!(Positive::new(f64::MAX).is_err());
+    assert!(serde_json::from_str::<Positive>("1.7976931348623157e+308").is_err());
+}
+
+/// An infinite float is not a representable `Positive` and is no longer mapped
+/// onto `Decimal::MAX`.
+#[test]
+fn test_infinite_float_is_rejected_on_deserialize() {
+    assert!(serde_json::from_str::<Positive>("1e400").is_err());
+}
+
+/// The type has no infinity, because `Decimal` has none. `MAX + ONE` overflows
+/// rather than saturating at an infinite value.
+#[test]
+fn test_max_is_a_real_maximum_not_an_infinity() {
+    assert!(matches!(
+        Positive::MAX.checked_add(&Positive::ONE).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_max_round_trips_through_decimal() {
+    let round_tripped = Positive::new_decimal(Positive::MAX.to_dec()).unwrap();
+    assert_eq!(round_tripped, Positive::MAX);
+    assert_eq!(round_tripped.to_dec(), Decimal::MAX);
 }
