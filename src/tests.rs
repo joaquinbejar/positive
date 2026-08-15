@@ -43,9 +43,11 @@ macro_rules! assert_pos_relative_eq {
         if diff_f64 == 0.0 {
             // exact match, nothing to check
         } else {
-            let abs_diff: $crate::Positive =
-                $crate::Positive::new(diff_f64)
-                    .expect("abs_diff must be positive");
+            // `diff_f64` is an `abs()` of a finite difference and the zero
+            // case is handled above, so it is strictly positive here. This
+            // macro is a test assertion helper; panicking is its contract.
+            let abs_diff: $crate::Positive = $crate::Positive::new(diff_f64)
+                .expect("abs_diff must be positive"); // scan-banned: allow
             let max_abs = left.max(right);
 
             if left.is_zero() || right.is_zero() {

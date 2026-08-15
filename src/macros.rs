@@ -54,7 +54,10 @@ macro_rules! pos {
 #[macro_export]
 macro_rules! pos_or_panic {
     ($val:expr) => {
-        $crate::Positive::new($val).expect("Failed to create Positive value")
+        // Panicking on invalid input is this macro's entire contract, and
+        // rules/global_rules.md sanctions it explicitly for tests, examples
+        // and literals.
+        $crate::Positive::new($val).expect("Failed to create Positive value") // scan-banned: allow
     };
 }
 
