@@ -29,8 +29,9 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Install Rust
-        # dtolnay/rust-toolchain 1.14
-        uses: dtolnay/rust-toolchain@e28255f972c9d51d5aeb20d5d79f4f98858dad35
+        # dtolnay/rust-toolchain master (the generic action; the version branches
+        # such as `1.14` hardcode that Rust release and reject a `toolchain` input)
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: stable
           components: rustfmt, clippy

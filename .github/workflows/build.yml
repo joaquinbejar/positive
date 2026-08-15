@@ -48,8 +48,9 @@ jobs:
       # fallback `if: failure()` that could never run because the steps before
       # it had already failed the job.
       - name: Install Rust
-        # dtolnay/rust-toolchain 1.14
-        uses: dtolnay/rust-toolchain@e28255f972c9d51d5aeb20d5d79f4f98858dad35
+        # dtolnay/rust-toolchain master (the generic action; the version branches
+        # such as `1.14` hardcode that Rust release and reject a `toolchain` input)
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: stable
 
@@ -88,8 +89,9 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Install MSRV toolchain
-        # dtolnay/rust-toolchain 1.14
-        uses: dtolnay/rust-toolchain@e28255f972c9d51d5aeb20d5d79f4f98858dad35
+        # dtolnay/rust-toolchain master (the generic action; the version branches
+        # such as `1.14` hardcode that Rust release and reject a `toolchain` input)
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: '1.85'
 
@@ -109,6 +111,16 @@ jobs:
       # `+1.85` overrides rust-toolchain.toml, which pins `stable` for local
       # development; without it cargo would silently use stable here and the
       # job would prove nothing.
+      # Printed and asserted, not assumed. rust-toolchain.toml pins `stable`
+      # for local development and silently overrides whatever the runner has
+      # installed, so without the `+1.85` override and this check the job
+      # would go green while compiling on stable and proving nothing.
+      - name: Confirm the toolchain really is 1.85
+        run: |
+          rustc +1.85 --version
+          rustc +1.85 --version | grep -q '^rustc 1\.85\.' \
+            || { echo "MSRV job is not running on 1.85"; exit 1; }
+
       - name: Check the library at MSRV, in every feature configuration
         run: |
           cargo +1.85 check --lib --all-features
