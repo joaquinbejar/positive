@@ -74,15 +74,15 @@ fn main() {
         Err(e) => println!("Division by zero error: {e}"),
     }
 
-    // Saturating operations (never fail)
-    println!("\n--- Saturating Operations ---");
+    // Flooring at zero, explicitly (never fails)
+    println!("\n--- Flooring At Zero ---");
 
     #[cfg(not(feature = "non-zero"))]
     {
         let small = pos_or_panic!(5.0);
         let large = pos_or_panic!(100.0);
-        let result = small.saturating_sub(&large);
-        println!("{small}.saturating_sub({large}) = {result} (saturates to ZERO)");
+        let result = small.sub_or_zero(&large.to_dec());
+        println!("{small}.sub_or_zero({large}) = {result} (floors at ZERO)");
     }
 
     // Using Result combinators

@@ -114,6 +114,87 @@ pub(crate) fn round_div(result: Decimal) -> Decimal {
     result.round_dp_with_strategy(DIV_SCALE, DIV_ROUNDING_STRATEGY)
 }
 
+// ===========================================================================
+// Checked `Decimal` kernels
+// ===========================================================================
+//
+// `rust_decimal`'s `+`, `-`, `*`, `/` and `%` operators panic on overflow and
+// on division by zero. Any `Positive` method advertised as non-panicking must
+// therefore never touch them: it has to go through `Decimal::checked_*` and
+// map the resulting `None` to a typed error.
+//
+// These five kernels are the only place in the crate permitted to perform
+// `Decimal` arithmetic. Every `checked_*` method on `Positive` delegates here,
+// so overflow wording and division-by-zero handling cannot drift between call
+// sites.
+
+/// Adds two `Decimal`s, mapping overflow to a typed error.
+#[inline]
+pub(crate) fn dec_add(
+    lhs: Decimal,
+    rhs: Decimal,
+    op: &'static str,
+) -> Result<Decimal, PositiveError> {
+    lhs.checked_add(rhs)
+        .ok_or_else(|| PositiveError::arithmetic_error(op, "overflow"))
+}
+
+/// Subtracts two `Decimal`s, mapping overflow to a typed error.
+#[inline]
+pub(crate) fn dec_sub(
+    lhs: Decimal,
+    rhs: Decimal,
+    op: &'static str,
+) -> Result<Decimal, PositiveError> {
+    lhs.checked_sub(rhs)
+        .ok_or_else(|| PositiveError::arithmetic_error(op, "overflow"))
+}
+
+/// Multiplies two `Decimal`s, mapping overflow to a typed error.
+#[inline]
+pub(crate) fn dec_mul(
+    lhs: Decimal,
+    rhs: Decimal,
+    op: &'static str,
+) -> Result<Decimal, PositiveError> {
+    lhs.checked_mul(rhs)
+        .ok_or_else(|| PositiveError::arithmetic_error(op, "overflow"))
+}
+
+/// Divides two `Decimal`s, mapping division by zero and overflow to typed
+/// errors.
+///
+/// Division by zero is reported before the division is attempted, because
+/// `Decimal::checked_div` and the `/` operator disagree on that case: the
+/// operator panics.
+#[inline]
+pub(crate) fn dec_div(
+    lhs: Decimal,
+    rhs: Decimal,
+    op: &'static str,
+) -> Result<Decimal, PositiveError> {
+    if rhs.is_zero() {
+        return Err(PositiveError::arithmetic_error(op, "division by zero"));
+    }
+    lhs.checked_div(rhs)
+        .ok_or_else(|| PositiveError::arithmetic_error(op, "overflow"))
+}
+
+/// Computes the remainder of two `Decimal`s, mapping division by zero and
+/// overflow to typed errors.
+#[inline]
+pub(crate) fn dec_rem(
+    lhs: Decimal,
+    rhs: Decimal,
+    op: &'static str,
+) -> Result<Decimal, PositiveError> {
+    if rhs.is_zero() {
+        return Err(PositiveError::arithmetic_error(op, "division by zero"));
+    }
+    lhs.checked_rem(rhs)
+        .ok_or_else(|| PositiveError::arithmetic_error(op, "overflow"))
+}
+
 /// Panics with a uniform message when a `Positive` arithmetic operation
 /// overflows the underlying `Decimal` range.
 ///
@@ -591,86 +672,356 @@ impl Positive {
     ///
     /// This method is not available when the `non-zero` feature is enabled
     /// because the result could be zero.
+    ///
+    /// Overflow cannot occur: the subtraction is performed with
+    /// [`Decimal::checked_sub`], and an overflowing difference is treated the
+    /// same as a negative one — the floor at zero is returned.
     #[cfg(not(feature = "non-zero"))]
     #[must_use]
     pub fn sub_or_zero(&self, other: &Decimal) -> Positive {
         if &self.0 > other {
-            Positive(self.0 - other)
+            match dec_sub(self.0, *other, "sub_or_zero") {
+                Ok(result) => Positive(result),
+                Err(_) => Positive::ZERO,
+            }
         } else {
-            Positive(Decimal::ZERO)
+            Positive::ZERO
         }
     }
 
-    /// Subtracts a decimal value, returning None if the result would be negative.
+    /// Subtracts a decimal value, returning `None` if the result would be
+    /// negative.
+    ///
+    /// Also returns `None` when the subtraction would overflow `Decimal`, so
+    /// this method cannot panic for any input.
     #[must_use]
     pub fn sub_or_none(&self, other: &Decimal) -> Option<Positive> {
         if &self.0 >= other {
-            Some(Positive(self.0 - other))
+            dec_sub(self.0, *other, "sub_or_none")
+                .ok()
+                .and_then(|result| Positive::new_decimal(result).ok())
         } else {
             None
         }
     }
 
-    /// Checked subtraction that returns Result instead of panicking.
+    /// Checked addition of two `Positive` values.
+    ///
+    /// This is the non-panicking counterpart of the `+` operator.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the sum overflows
+    /// `Decimal`, and [`PositiveError::OutOfBounds`] when the result would
+    /// break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, PositiveError, pos_or_panic};
+    /// use rust_decimal::Decimal;
+    ///
+    /// let a = pos_or_panic!(2.0);
+    /// assert_eq!(a.checked_add(&pos_or_panic!(3.0)).unwrap(), pos_or_panic!(5.0));
+    ///
+    /// let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    /// assert!(matches!(
+    ///     max.checked_add(&Positive::ONE).unwrap_err(),
+    ///     PositiveError::ArithmeticError { .. }
+    /// ));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the overflow error"]
+    pub fn checked_add(&self, rhs: &Self) -> Result<Self, PositiveError> {
+        Positive::new_decimal(dec_add(self.0, rhs.0, "addition")?)
+    }
+
+    /// Checked multiplication of two `Positive` values.
+    ///
+    /// This is the non-panicking counterpart of the `*` operator.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the product overflows
+    /// `Decimal`, and [`PositiveError::OutOfBounds`] when the result would
+    /// break the positivity invariant — which, under the `non-zero` feature,
+    /// includes a product that underflows to zero.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, PositiveError, pos_or_panic};
+    /// use rust_decimal::Decimal;
+    ///
+    /// let a = pos_or_panic!(4.0);
+    /// assert_eq!(a.checked_mul(&pos_or_panic!(2.5)).unwrap(), pos_or_panic!(10.0));
+    ///
+    /// let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    /// assert!(matches!(
+    ///     max.checked_mul(&Positive::TWO).unwrap_err(),
+    ///     PositiveError::ArithmeticError { .. }
+    /// ));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the overflow error"]
+    pub fn checked_mul(&self, rhs: &Self) -> Result<Self, PositiveError> {
+        Positive::new_decimal(dec_mul(self.0, rhs.0, "multiplication")?)
+    }
+
+    /// Checked subtraction that returns a `Result` instead of panicking.
+    ///
+    /// This is the non-panicking counterpart of the `-` operator.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] when the difference
+    /// overflows `Decimal`, and [`PositiveError::OutOfBounds`] when the result
+    /// would be negative (or zero under the `non-zero` feature).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{PositiveError, pos_or_panic};
+    ///
+    /// let a = pos_or_panic!(5.0);
+    /// assert_eq!(a.checked_sub(&pos_or_panic!(2.0)).unwrap(), pos_or_panic!(3.0));
+    /// assert!(matches!(
+    ///     a.checked_sub(&pos_or_panic!(9.0)).unwrap_err(),
+    ///     PositiveError::OutOfBounds { .. }
+    /// ));
+    /// ```
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the overflow/underflow error"]
     pub fn checked_sub(&self, rhs: &Self) -> Result<Self, PositiveError> {
-        Positive::new_decimal(self.0 - rhs.0)
+        Positive::new_decimal(dec_sub(self.0, rhs.0, "subtraction")?)
     }
 
     /// Saturating subtraction that returns ZERO instead of negative.
     ///
     /// This method is not available when the `non-zero` feature is enabled
     /// because the result could be zero.
+    ///
+    /// # Deprecated
+    ///
+    /// `rules/global_rules.md` forbids saturating arithmetic: silently
+    /// clamping an underflow to zero is indistinguishable from a genuine zero
+    /// result, which in financial arithmetic is data corruption rather than a
+    /// convenience. Use [`Positive::checked_sub`] and handle the error, or
+    /// [`Positive::sub_or_zero`] if flooring at zero is genuinely what the
+    /// caller wants and the intent should be visible at the call site.
+    ///
+    /// Scheduled for removal in the release following 0.6.0.
     #[cfg(not(feature = "non-zero"))]
+    #[deprecated(
+        since = "0.6.0",
+        note = "saturating arithmetic hides underflow; use `checked_sub` and handle the error, or `sub_or_zero` to floor at zero explicitly. Removal is scheduled for the release after 0.6.0"
+    )]
     #[must_use]
     pub fn saturating_sub(&self, rhs: &Self) -> Self {
         if self.0 > rhs.0 {
-            Positive(self.0 - rhs.0)
+            match dec_sub(self.0, rhs.0, "saturating_sub") {
+                Ok(result) => Positive(result),
+                Err(_) => Positive::ZERO,
+            }
         } else {
             Positive::ZERO
         }
     }
 
-    /// Checked division that returns Result instead of panicking.
+    /// Checked division that returns a `Result` instead of panicking.
     ///
     /// Uses [`DIV_ROUNDING_STRATEGY`] (banker's rounding) for any
     /// rounding required by the result. Use
     /// [`Positive::checked_div_with_strategy`] to select a different
     /// strategy.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] on division by zero and on
+    /// overflow — the latter is reachable, for example, when dividing
+    /// `Decimal::MAX` by `1e-28`. Returns [`PositiveError::OutOfBounds`] when
+    /// the quotient would break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, PositiveError, pos_or_panic};
+    /// use rust_decimal::Decimal;
+    ///
+    /// let a = pos_or_panic!(10.0);
+    /// assert_eq!(a.checked_div(&pos_or_panic!(4.0)).unwrap(), pos_or_panic!(2.5));
+    ///
+    /// let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    /// let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    /// assert!(matches!(
+    ///     max.checked_div(&tiny).unwrap_err(),
+    ///     PositiveError::ArithmeticError { .. }
+    /// ));
+    /// ```
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the division-by-zero error"]
     pub fn checked_div(&self, rhs: &Self) -> Result<Self, PositiveError> {
-        if rhs.is_zero() {
-            Err(PositiveError::arithmetic_error(
-                "division",
-                "division by zero",
-            ))
-        } else {
-            Ok(Positive(round_div(self.0 / rhs.0)))
-        }
+        let quotient = dec_div(self.0, rhs.0, "division")?;
+        Positive::new_decimal(round_div(quotient))
     }
 
     /// Checked division with an explicit rounding strategy.
     ///
     /// # Errors
     ///
-    /// Returns an `ArithmeticError` on division by zero or overflow.
+    /// Returns [`PositiveError::ArithmeticError`] on division by zero or
+    /// overflow, and [`PositiveError::OutOfBounds`] when the quotient would
+    /// break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal::RoundingStrategy;
+    ///
+    /// let a = pos_or_panic!(10.0);
+    /// let result = a
+    ///     .checked_div_with_strategy(&pos_or_panic!(3.0), RoundingStrategy::ToZero)
+    ///     .unwrap();
+    /// assert!(result < pos_or_panic!(3.34));
+    /// ```
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
     pub fn checked_div_with_strategy(
         &self,
         rhs: &Self,
         strategy: RoundingStrategy,
     ) -> Result<Self, PositiveError> {
-        if rhs.is_zero() {
-            return Err(PositiveError::arithmetic_error(
-                "division",
-                "division by zero",
-            ));
-        }
-        let result = self
-            .0
-            .checked_div(rhs.0)
-            .ok_or_else(|| PositiveError::arithmetic_error("division", "overflow"))?;
-        Ok(Positive(result.round_dp_with_strategy(DIV_SCALE, strategy)))
+        let quotient = dec_div(self.0, rhs.0, "division")?;
+        Positive::new_decimal(quotient.round_dp_with_strategy(DIV_SCALE, strategy))
+    }
+
+    /// Checked addition with a `Decimal`, returning a `Result` instead of
+    /// panicking.
+    ///
+    /// This is the non-panicking counterpart of `Positive + Decimal`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] on overflow and
+    /// [`PositiveError::OutOfBounds`] when the result would break the
+    /// positivity invariant — for example when `rhs` is negative and larger in
+    /// magnitude than `self`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{PositiveError, pos_or_panic};
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let a = pos_or_panic!(5.0);
+    /// assert_eq!(a.checked_add_dec(dec!(2.5)).unwrap(), pos_or_panic!(7.5));
+    /// assert!(matches!(
+    ///     a.checked_add_dec(dec!(-9)).unwrap_err(),
+    ///     PositiveError::OutOfBounds { .. }
+    /// ));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_add_dec(self, rhs: Decimal) -> Result<Positive, PositiveError> {
+        Positive::new_decimal(dec_add(self.0, rhs, "add_decimal")?)
+    }
+
+    /// Checked subtraction of a `Decimal`, returning a `Result` instead of
+    /// panicking.
+    ///
+    /// This is the non-panicking counterpart of `Positive - Decimal`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] on overflow and
+    /// [`PositiveError::OutOfBounds`] when the result would break the
+    /// positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let a = pos_or_panic!(5.0);
+    /// assert_eq!(a.checked_sub_dec(dec!(1.5)).unwrap(), pos_or_panic!(3.5));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_sub_dec(self, rhs: Decimal) -> Result<Positive, PositiveError> {
+        Positive::new_decimal(dec_sub(self.0, rhs, "sub_decimal")?)
+    }
+
+    /// Checked multiplication by a `Decimal`, returning a `Result` instead of
+    /// panicking.
+    ///
+    /// This is the non-panicking counterpart of `Positive * Decimal`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] on overflow and
+    /// [`PositiveError::OutOfBounds`] when the result would break the
+    /// positivity invariant — for example when `rhs` is negative.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let a = pos_or_panic!(4.0);
+    /// assert_eq!(a.checked_mul_dec(dec!(2.5)).unwrap(), pos_or_panic!(10.0));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_mul_dec(self, rhs: Decimal) -> Result<Positive, PositiveError> {
+        Positive::new_decimal(dec_mul(self.0, rhs, "mul_decimal")?)
+    }
+
+    /// Checked division by a `Decimal`, returning a `Result` instead of
+    /// panicking.
+    ///
+    /// This is the non-panicking counterpart of `Positive / Decimal`, and uses
+    /// [`DIV_ROUNDING_STRATEGY`] when rounding is required.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] on division by zero and on
+    /// overflow, and [`PositiveError::OutOfBounds`] when the quotient would
+    /// break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{PositiveError, pos_or_panic};
+    /// use rust_decimal::Decimal;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let a = pos_or_panic!(10.0);
+    /// assert_eq!(a.checked_div_dec(dec!(4)).unwrap(), pos_or_panic!(2.5));
+    /// assert!(matches!(
+    ///     a.checked_div_dec(Decimal::ZERO).unwrap_err(),
+    ///     PositiveError::ArithmeticError { .. }
+    /// ));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_div_dec(self, rhs: Decimal) -> Result<Positive, PositiveError> {
+        let quotient = dec_div(self.0, rhs, "div_decimal")?;
+        Positive::new_decimal(round_div(quotient))
+    }
+
+    /// Checked remainder of division by another `Positive`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] on division by zero or
+    /// overflow, and [`PositiveError::OutOfBounds`] when the remainder would
+    /// break the positivity invariant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{PositiveError, pos_or_panic};
+    ///
+    /// let a = pos_or_panic!(10.0);
+    /// assert_eq!(a.checked_rem(&pos_or_panic!(3.0)).unwrap(), pos_or_panic!(1.0));
+    /// ```
+    #[must_use = "checked arithmetic returns a Result; ignoring it silences the error"]
+    pub fn checked_rem(&self, rhs: &Self) -> Result<Self, PositiveError> {
+        Positive::new_decimal(dec_rem(self.0, rhs.0, "remainder")?)
     }
 
     /// Checked addition with an `f64`, returning a `Result` instead of panicking.
@@ -686,11 +1037,7 @@ impl Positive {
         let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
             PositiveError::conversion_error("f64", "Decimal", "value not representable as Decimal")
         })?;
-        let result = self
-            .0
-            .checked_add(rhs_dec)
-            .ok_or_else(|| PositiveError::arithmetic_error("add_f64", "overflow"))?;
-        Positive::new_decimal(result)
+        Positive::new_decimal(dec_add(self.0, rhs_dec, "add_f64")?)
     }
 
     /// Checked subtraction with an `f64`, returning a `Result` instead of panicking.
@@ -705,11 +1052,7 @@ impl Positive {
         let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
             PositiveError::conversion_error("f64", "Decimal", "value not representable as Decimal")
         })?;
-        let result = self
-            .0
-            .checked_sub(rhs_dec)
-            .ok_or_else(|| PositiveError::arithmetic_error("sub_f64", "overflow"))?;
-        Positive::new_decimal(result)
+        Positive::new_decimal(dec_sub(self.0, rhs_dec, "sub_f64")?)
     }
 
     /// Checked multiplication with an `f64`, returning a `Result` instead of panicking.
@@ -725,11 +1068,7 @@ impl Positive {
         let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
             PositiveError::conversion_error("f64", "Decimal", "value not representable as Decimal")
         })?;
-        let result = self
-            .0
-            .checked_mul(rhs_dec)
-            .ok_or_else(|| PositiveError::arithmetic_error("mul_f64", "overflow"))?;
-        Positive::new_decimal(result)
+        Positive::new_decimal(dec_mul(self.0, rhs_dec, "mul_f64")?)
     }
 
     /// Checked division by an `f64`, returning a `Result` instead of panicking.
@@ -745,17 +1084,7 @@ impl Positive {
         let rhs_dec = Decimal::from_f64(rhs).ok_or_else(|| {
             PositiveError::conversion_error("f64", "Decimal", "value not representable as Decimal")
         })?;
-        if rhs_dec.is_zero() {
-            return Err(PositiveError::arithmetic_error(
-                "div_f64",
-                "division by zero",
-            ));
-        }
-        let result = self
-            .0
-            .checked_div(rhs_dec)
-            .ok_or_else(|| PositiveError::arithmetic_error("div_f64", "overflow"))?;
-        Positive::new_decimal(round_div(result))
+        Positive::new_decimal(round_div(dec_div(self.0, rhs_dec, "div_f64")?))
     }
 
     /// Checks whether the value is a multiple of another `f64` value.
@@ -1292,7 +1621,18 @@ impl fmt::Debug for Positive {
 impl PartialEq<Decimal> for Positive {
     #[inline]
     fn eq(&self, other: &Decimal) -> bool {
-        (self.0 - *other).abs() <= EPSILON_CMP
+        // Raw subtraction panics when the operands straddle `Decimal`'s range
+        // (`Decimal::MAX` against `Decimal::MIN`, for instance). A difference
+        // that cannot be represented is by definition larger than the
+        // comparison epsilon, so an overflow means "not equal".
+        //
+        // The epsilon comparison itself, and the asymmetry it creates against
+        // `Decimal == Positive`, are addressed separately in issue #77. This
+        // change only removes the panic.
+        match dec_sub(self.0, *other, "compare") {
+            Ok(difference) => difference.abs() <= EPSILON_CMP,
+            Err(_) => false,
+        }
     }
 }
 
@@ -1772,7 +2112,11 @@ impl AbsDiffEq for Positive {
     }
 
     fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
-        (self.0 - other.0).abs() <= epsilon
+        // A difference too large to represent cannot be within any epsilon.
+        match dec_sub(self.0, other.0, "abs_diff_eq") {
+            Ok(difference) => difference.abs() <= epsilon,
+            Err(_) => false,
+        }
     }
 }
 
@@ -1787,9 +2131,23 @@ impl RelativeEq for Positive {
         epsilon: Self::Epsilon,
         max_relative: Self::Epsilon,
     ) -> bool {
-        let abs_diff = (self.0 - other.0).abs();
+        let Ok(difference) = dec_sub(self.0, other.0, "relative_eq") else {
+            // A difference too large to represent cannot be within any
+            // absolute epsilon, and the relative test below would need a
+            // tolerance larger than `Decimal::MAX` to accept it.
+            return false;
+        };
+        let abs_diff = difference.abs();
+        if abs_diff <= epsilon {
+            return true;
+        }
         let largest = self.0.abs().max(other.0.abs());
-        abs_diff <= epsilon || abs_diff <= max_relative * largest
+        match dec_mul(max_relative, largest, "relative_eq") {
+            Ok(tolerance) => abs_diff <= tolerance,
+            // The tolerance overflowed `Decimal`, so it exceeds every
+            // representable difference — including this one.
+            Err(_) => true,
+        }
     }
 }
 
