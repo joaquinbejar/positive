@@ -311,6 +311,13 @@ pub(crate) fn validate_precision(decimal_places: u32) -> Result<u32, PositiveErr
     Ok(decimal_places)
 }
 
+/// Panics with a uniform message when a clamp range is inverted.
+#[cold]
+#[inline(never)]
+pub(crate) fn inverted_range_panic() -> ! {
+    panic!("Positive clamp range is inverted: min is greater than max")
+}
+
 /// Panics with a uniform message when a caller-supplied precision is outside
 /// the range `Decimal` supports.
 #[cold]
@@ -1372,15 +1379,82 @@ impl Positive {
     }
 
     /// Clamps the value between a minimum and maximum.
+    ///
+    /// Takes `self` by value. With a `&self` receiver — as earlier versions
+    /// had — Rust's method resolution preferred `Ord::clamp` for any owned
+    /// `Positive`, because that one needs no autoref. The crate's own clamp
+    /// was therefore only reachable through a reference, and the two disagreed
+    /// on inverted ranges: `Ord::clamp` asserted, this one silently returned a
+    /// bound. Taking `self` makes the inherent method win uniformly, so there
+    /// is one contract regardless of how the receiver is written.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `min > max`. The standard `clamp` contract treats an
+    /// inverted range as a caller bug, and this method follows it. The
+    /// reference path used to return whichever bound the if/else chain reached
+    /// first, so the same impossible interval produced `min` for a low input
+    /// and `max` for a high one, with nothing to tell the caller.
+    ///
+    /// Use [`Positive::checked_clamp`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// let value = pos_or_panic!(7.0);
+    /// assert_eq!(value.clamp(pos_or_panic!(1.0), pos_or_panic!(5.0)), pos_or_panic!(5.0));
+    /// assert_eq!(value.clamp(pos_or_panic!(8.0), pos_or_panic!(10.0)), pos_or_panic!(8.0));
+    /// assert_eq!(value.clamp(pos_or_panic!(1.0), pos_or_panic!(10.0)), value);
+    /// ```
     #[must_use]
-    pub fn clamp(&self, min: Positive, max: Positive) -> Positive {
-        if self < &min {
+    pub fn clamp(self, min: Positive, max: Positive) -> Positive {
+        match self.checked_clamp(min, max) {
+            Ok(clamped) => clamped,
+            Err(_) => inverted_range_panic(),
+        }
+    }
+
+    /// Clamps the value between a minimum and maximum, returning an error
+    /// instead of panicking on an inverted range.
+    ///
+    /// Equal bounds are valid and collapse the interval to a single value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::OutOfBounds`] when `min > max`. The error
+    /// carries the offending bounds as exact `Decimal`s: `value` is the
+    /// requested `min`, with `min`/`max` describing the range it had to fall
+    /// within to be a valid lower bound.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{PositiveError, pos_or_panic};
+    ///
+    /// let value = pos_or_panic!(7.0);
+    /// assert_eq!(
+    ///     value.checked_clamp(pos_or_panic!(1.0), pos_or_panic!(5.0)).unwrap(),
+    ///     pos_or_panic!(5.0)
+    /// );
+    /// assert!(matches!(
+    ///     value.checked_clamp(pos_or_panic!(10.0), pos_or_panic!(1.0)).unwrap_err(),
+    ///     PositiveError::OutOfBounds { .. }
+    /// ));
+    /// ```
+    #[must_use = "checked clamping returns a Result; ignoring it silences the inverted-range error"]
+    pub fn checked_clamp(self, min: Positive, max: Positive) -> Result<Positive, PositiveError> {
+        if min > max {
+            return Err(PositiveError::out_of_bounds(min.0, min_bound(), max.0));
+        }
+        Ok(if self < min {
             min
-        } else if self > &max {
+        } else if self > max {
             max
         } else {
-            *self
-        }
+            self
+        })
     }
 
     /// Checks if the value is exactly zero.

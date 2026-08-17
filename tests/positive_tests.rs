@@ -3217,3 +3217,137 @@ fn test_format_at_max_scale_produces_28_decimals() {
     assert_eq!(decimals.len(), 28);
     assert!(formatted.starts_with("1.5"));
 }
+
+// ===== Inverted clamp bounds have one explicit contract (issue #82) =====
+
+/// The defect: with `min > max`, the old if/else chain returned `min` for a
+/// low input and `max` for a high one, so the same impossible interval gave
+/// two different answers and neither told the caller anything was wrong.
+#[test]
+fn test_inverted_bounds_are_reported_not_silently_resolved() {
+    let low = pos_or_panic!(1.0);
+    let high = pos_or_panic!(100.0);
+    let min = pos_or_panic!(10.0);
+    let max = pos_or_panic!(5.0);
+
+    let low_err = low.checked_clamp(min, max).unwrap_err();
+    let high_err = high.checked_clamp(min, max).unwrap_err();
+
+    assert!(matches!(low_err, PositiveError::OutOfBounds { .. }));
+    assert!(matches!(high_err, PositiveError::OutOfBounds { .. }));
+    // one contract, regardless of where the input sits
+    assert_eq!(low_err, high_err);
+}
+
+#[test]
+#[should_panic(expected = "Positive clamp range is inverted")]
+fn test_clamp_panics_on_inverted_bounds() {
+    let _ = pos_or_panic!(7.0).clamp(pos_or_panic!(10.0), pos_or_panic!(5.0));
+}
+
+#[test]
+fn test_checked_clamp_below_inside_and_above() {
+    let min = pos_or_panic!(5.0);
+    let max = pos_or_panic!(10.0);
+
+    assert_eq!(pos_or_panic!(1.0).checked_clamp(min, max).unwrap(), min);
+    assert_eq!(
+        pos_or_panic!(7.0).checked_clamp(min, max).unwrap(),
+        pos_or_panic!(7.0)
+    );
+    assert_eq!(pos_or_panic!(50.0).checked_clamp(min, max).unwrap(), max);
+}
+
+/// Equal bounds are a valid interval that collapses to a single value.
+#[test]
+fn test_checked_clamp_equal_bounds() {
+    let bound = pos_or_panic!(5.0);
+    assert_eq!(
+        pos_or_panic!(1.0).checked_clamp(bound, bound).unwrap(),
+        bound
+    );
+    assert_eq!(
+        pos_or_panic!(5.0).checked_clamp(bound, bound).unwrap(),
+        bound
+    );
+    assert_eq!(
+        pos_or_panic!(9.0).checked_clamp(bound, bound).unwrap(),
+        bound
+    );
+}
+
+/// Exactly-on-the-bound inputs are inside the interval, not clamped.
+#[test]
+fn test_checked_clamp_at_the_bounds_is_identity() {
+    let min = pos_or_panic!(5.0);
+    let max = pos_or_panic!(10.0);
+    assert_eq!(min.checked_clamp(min, max).unwrap(), min);
+    assert_eq!(max.checked_clamp(min, max).unwrap(), max);
+}
+
+/// The panicking wrapper must agree with the checked form wherever both
+/// succeed.
+#[test]
+fn test_clamp_agrees_with_checked_clamp() {
+    let min = pos_or_panic!(5.0);
+    let max = pos_or_panic!(10.0);
+    for input in [1.0_f64, 5.0, 7.5, 10.0, 50.0] {
+        let value = Positive::new(input).unwrap();
+        assert_eq!(
+            value.clamp(min, max),
+            value.checked_clamp(min, max).unwrap()
+        );
+    }
+}
+
+/// The contract holds at the extremes of the range under both feature modes.
+#[test]
+fn test_checked_clamp_at_decimal_extremes() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let max = Positive::MAX;
+
+    assert_eq!(tiny.checked_clamp(tiny, max).unwrap(), tiny);
+    assert_eq!(max.checked_clamp(tiny, max).unwrap(), max);
+    assert!(max.checked_clamp(max, tiny).is_err());
+}
+
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_checked_clamp_with_zero_bounds_by_default() {
+    let value = pos_or_panic!(5.0);
+    assert_eq!(
+        value.checked_clamp(Positive::ZERO, Positive::ONE).unwrap(),
+        Positive::ONE
+    );
+    assert!(value.checked_clamp(Positive::ONE, Positive::ZERO).is_err());
+}
+
+/// The inherent `clamp` must win over `Ord::clamp` for the normal call form.
+///
+/// With the previous `&self` receiver it never did: `Ord::clamp` matched
+/// `Positive` by value at the first resolution step, so the crate's own method
+/// was unreachable through method syntax and only usable as
+/// `Positive::clamp(&value, ..)`. Taking `self` puts the inherent method at the
+/// same step, where it is preferred.
+#[test]
+fn test_inherent_clamp_is_the_one_that_runs() {
+    let min = pos_or_panic!(5.0);
+    let max = pos_or_panic!(10.0);
+    let value = pos_or_panic!(1.0);
+
+    assert_eq!(value.clamp(min, max), min);
+    assert_eq!(Positive::clamp(value, min, max), min);
+    assert_eq!(value.checked_clamp(min, max).unwrap(), min);
+}
+
+/// No silent-wrong-answer path is left. The inherent method panics with the
+/// crate's message; the `Ord` implementation, still reachable for reference
+/// receivers, asserts. Either way an inverted range is reported.
+#[test]
+#[should_panic(expected = "assertion failed: min <= max")]
+fn test_ord_clamp_on_references_also_rejects_inverted_bounds() {
+    let value = pos_or_panic!(7.0);
+    let min = pos_or_panic!(10.0);
+    let max = pos_or_panic!(5.0);
+    let _ = (&value).clamp(&min, &max);
+}
