@@ -52,8 +52,12 @@ fn main() {
 
     #[cfg(not(feature = "non-zero"))]
     {
-        let saturating = b.saturating_sub(&a);
-        println!("b.saturating_sub(&a) = {saturating} (saturates to ZERO)");
+        // `sub_or_zero` floors at zero, and the name says so at the call site.
+        // `saturating_sub` did the same thing but is deprecated: saturating
+        // arithmetic hides underflow, which is data corruption in financial
+        // code.
+        let floored = b.sub_or_zero(&a.to_dec());
+        println!("b.sub_or_zero(a) = {floored} (floors at ZERO)");
     }
 
     // Mathematical functions

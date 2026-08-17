@@ -221,8 +221,11 @@ fn test_checked_sub_failure() {
     assert!(result.is_err());
 }
 
+/// `saturating_sub` is deprecated but still shipped in 0.6.0, so its behaviour
+/// stays covered until it is removed in the following release.
 #[cfg(not(feature = "non-zero"))]
 #[test]
+#[allow(deprecated)]
 fn test_saturating_sub() {
     let a = pos_or_panic!(5.0);
     let b = pos_or_panic!(3.0);
@@ -1708,4 +1711,236 @@ fn test_error_variants_are_exhaustively_matchable() {
         describe(&Positive::new_decimal(Decimal::NEGATIVE_ONE).unwrap_err()),
         "out-of-bounds"
     );
+}
+
+// ===== Genuinely non-panicking checked arithmetic (issue #71) =====
+
+/// The headline regression: `Decimal::MAX / 1e-28` overflows inside
+/// `rust_decimal`. With raw division this panicked before a `Result` could be
+/// returned.
+#[test]
+fn test_checked_div_max_by_smallest_returns_error_not_panic() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let err = max.checked_div(&tiny).unwrap_err();
+    assert!(matches!(err, PositiveError::ArithmeticError { .. }));
+}
+
+#[test]
+fn test_checked_div_with_strategy_max_by_smallest_returns_error() {
+    use rust_decimal::RoundingStrategy;
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let err = max
+        .checked_div_with_strategy(&tiny, RoundingStrategy::MidpointNearestEven)
+        .unwrap_err();
+    assert!(matches!(err, PositiveError::ArithmeticError { .. }));
+}
+
+#[test]
+fn test_checked_div_by_zero_is_arithmetic_error() {
+    let a = pos_or_panic!(5.0);
+    let zero = Positive::new_decimal(Decimal::ZERO);
+    if let Ok(zero) = zero {
+        let err = a.checked_div(&zero).unwrap_err();
+        assert!(matches!(err, PositiveError::ArithmeticError { .. }));
+    }
+}
+
+#[test]
+fn test_checked_add_max_plus_one_is_arithmetic_error() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let err = max.checked_add(&Positive::ONE).unwrap_err();
+    assert!(matches!(err, PositiveError::ArithmeticError { .. }));
+}
+
+#[test]
+fn test_checked_add_success() {
+    let a = pos_or_panic!(2.5);
+    assert_eq!(
+        a.checked_add(&pos_or_panic!(3.5)).unwrap(),
+        pos_or_panic!(6.0)
+    );
+}
+
+#[test]
+fn test_checked_mul_overflow_is_arithmetic_error() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let err = max.checked_mul(&Positive::TWO).unwrap_err();
+    assert!(matches!(err, PositiveError::ArithmeticError { .. }));
+}
+
+#[test]
+fn test_checked_mul_success() {
+    let a = pos_or_panic!(4.0);
+    assert_eq!(
+        a.checked_mul(&pos_or_panic!(2.5)).unwrap(),
+        pos_or_panic!(10.0)
+    );
+}
+
+#[test]
+fn test_checked_sub_negative_result_is_out_of_bounds() {
+    let a = pos_or_panic!(3.0);
+    let err = a.checked_sub(&pos_or_panic!(5.0)).unwrap_err();
+    assert!(matches!(err, PositiveError::OutOfBounds { .. }));
+}
+
+/// Under `non-zero`, a product that underflows to zero must be reported rather
+/// than returned as a `Positive(0)`.
+#[cfg(feature = "non-zero")]
+#[test]
+fn test_checked_mul_underflow_to_zero_is_out_of_bounds() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let err = tiny.checked_mul(&tiny).unwrap_err();
+    assert!(matches!(err, PositiveError::OutOfBounds { .. }));
+}
+
+// --- mixed Decimal checked operators ---
+
+#[test]
+fn test_checked_add_dec() {
+    let a = pos_or_panic!(5.0);
+    assert_eq!(a.checked_add_dec(dec!(2.5)).unwrap(), pos_or_panic!(7.5));
+    assert!(matches!(
+        a.checked_add_dec(dec!(-9)).unwrap_err(),
+        PositiveError::OutOfBounds { .. }
+    ));
+    assert!(matches!(
+        a.checked_add_dec(Decimal::MAX).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_sub_dec() {
+    let a = pos_or_panic!(5.0);
+    assert_eq!(a.checked_sub_dec(dec!(1.5)).unwrap(), pos_or_panic!(3.5));
+    assert!(matches!(
+        a.checked_sub_dec(dec!(9)).unwrap_err(),
+        PositiveError::OutOfBounds { .. }
+    ));
+    assert!(matches!(
+        a.checked_sub_dec(Decimal::MIN).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_mul_dec() {
+    let a = pos_or_panic!(4.0);
+    assert_eq!(a.checked_mul_dec(dec!(2.5)).unwrap(), pos_or_panic!(10.0));
+    assert!(matches!(
+        a.checked_mul_dec(dec!(-1)).unwrap_err(),
+        PositiveError::OutOfBounds { .. }
+    ));
+    assert!(matches!(
+        a.checked_mul_dec(Decimal::MAX).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_div_dec() {
+    let a = pos_or_panic!(10.0);
+    assert_eq!(a.checked_div_dec(dec!(4)).unwrap(), pos_or_panic!(2.5));
+    assert!(matches!(
+        a.checked_div_dec(Decimal::ZERO).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+    assert!(matches!(
+        a.checked_div_dec(dec!(-2)).unwrap_err(),
+        PositiveError::OutOfBounds { .. }
+    ));
+}
+
+#[test]
+fn test_checked_div_dec_max_by_smallest_returns_error() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(matches!(
+        max.checked_div_dec(Decimal::new(1, 28)).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+}
+
+#[test]
+fn test_checked_rem() {
+    let a = pos_or_panic!(10.0);
+    assert_eq!(
+        a.checked_rem(&pos_or_panic!(3.0)).unwrap(),
+        pos_or_panic!(1.0)
+    );
+}
+
+#[test]
+fn test_checked_rem_by_zero_is_arithmetic_error() {
+    let a = pos_or_panic!(10.0);
+    if let Ok(zero) = Positive::new_decimal(Decimal::ZERO) {
+        assert!(matches!(
+            a.checked_rem(&zero).unwrap_err(),
+            PositiveError::ArithmeticError { .. }
+        ));
+    }
+}
+
+/// `sub_or_none` must not panic even when the subtraction would overflow the
+/// `Decimal` range.
+#[test]
+fn test_sub_or_none_cannot_panic_on_overflow() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert_eq!(max.sub_or_none(&Decimal::MIN), None);
+}
+
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_sub_or_zero_cannot_panic_on_overflow() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert_eq!(max.sub_or_zero(&Decimal::MIN), Positive::ZERO);
+}
+
+/// Comparison against `Decimal` must not panic when the operands straddle the
+/// representable range. The epsilon semantics themselves are issue #77.
+#[test]
+fn test_compare_extremes_does_not_panic() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(max != Decimal::MIN);
+}
+
+#[test]
+fn test_approx_comparison_at_extremes_does_not_panic() {
+    use approx::{AbsDiffEq, RelativeEq};
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let one = Positive::ONE;
+
+    // The difference is representable here, so both comparisons run their
+    // normal path; neither may panic.
+    assert!(!max.abs_diff_eq(&one, Decimal::ONE));
+    assert!(!max.relative_eq(&one, Decimal::ONE, Decimal::new(1, 10)));
+
+    // A relative tolerance whose product with the larger operand overflows
+    // `Decimal` exceeds every representable difference, so the values compare
+    // equal rather than panicking.
+    assert!(max.relative_eq(&one, Decimal::ONE, Decimal::MAX));
+}
+
+/// Every documented panicking arithmetic operator has a checked counterpart.
+#[test]
+fn test_every_panicking_operator_has_a_checked_counterpart() {
+    let a = pos_or_panic!(6.0);
+    let b = pos_or_panic!(3.0);
+    // Positive op Positive
+    assert_eq!((a + b), a.checked_add(&b).unwrap());
+    assert_eq!((a - b), a.checked_sub(&b).unwrap());
+    assert_eq!((a * b), a.checked_mul(&b).unwrap());
+    assert_eq!((a / b), a.checked_div(&b).unwrap());
+    // Positive op Decimal
+    assert_eq!((a + dec!(3)), a.checked_add_dec(dec!(3)).unwrap());
+    assert_eq!((a - dec!(3)), a.checked_sub_dec(dec!(3)).unwrap());
+    assert_eq!((a * dec!(3)), a.checked_mul_dec(dec!(3)).unwrap());
+    assert_eq!((a / dec!(3)), a.checked_div_dec(dec!(3)).unwrap());
+    // Positive op f64
+    assert_eq!((a + 3.0), a.checked_add_f64(3.0).unwrap());
+    assert_eq!((a - 3.0), a.checked_sub_f64(3.0).unwrap());
+    assert_eq!((a * 3.0), a.checked_mul_f64(3.0).unwrap());
+    assert_eq!((a / 3.0), a.checked_div_f64(3.0).unwrap());
 }
