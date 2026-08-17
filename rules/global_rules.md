@@ -30,7 +30,8 @@ Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default
 Only derive what is needed. No `Ord` if ordering is meaningless. No `Default` if no sensible default exists. `Positive` intentionally derives `PartialOrd`/`Ord` because positive decimals are totally ordered.
 
 Serde conventions:
-- `#[serde(transparent)]` for single-field newtypes — `Positive` wraps `Decimal` transparently so JSON round-trips as a number.
+- `#[serde(transparent)]` for single-field newtypes, **except** where a derived representation would lose precision.
+- `Positive` is that exception: it implements `Serialize`/`Deserialize` by hand and emits the exact `Decimal` string, because a JSON number round-trips through `f64` and silently truncates values beyond its precision. Deserialization still accepts legacy numbers so documents written before that change keep loading. Do not add `#[serde(transparent)]` to it — that would change the wire format back to a lossy number.
 - `#[serde(deny_unknown_fields)]` on any future config-like structs.
 
 ---

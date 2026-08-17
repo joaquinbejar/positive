@@ -59,6 +59,20 @@ scan-banned:
 		exit 1; \
 	fi; \
 	echo "OK: no .unwrap()/.expect() in production code"
+	@$(MAKE) --no-print-directory scan-indexing
+
+# Unchecked `[]` indexing is the third banned panic source, and a grep cannot
+# tell `arr[i]` from a macro or a type parameter. Clippy can, so the check runs
+# as a lint rather than a scan. It is restricted to `--lib`, because the ban
+# covers `src/` only: tests and benches index freely by design. Each feature
+# configuration is linted separately, since cfg-gated code is only visible in
+# its own.
+.PHONY: scan-indexing
+scan-indexing:
+	cargo clippy --lib --all-features -- -D clippy::indexing_slicing
+	cargo clippy --lib --no-default-features -- -D clippy::indexing_slicing
+	cargo clippy --lib --features non-zero -- -D clippy::indexing_slicing
+	@echo "OK: no unchecked indexing in production code"
 
 # Documentation must build with zero warnings.
 .PHONY: doc-check
