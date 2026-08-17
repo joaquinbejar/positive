@@ -294,10 +294,21 @@
 //! - **Game Development**: Health points, distances, timers
 //! - **Data Validation**: Ensuring input values meet positivity constraints
 //!
+//! ## Safety
+//!
+//! This crate contains no `unsafe` code, enforced at compile time by
+//! `#![forbid(unsafe_code)]`. Earlier versions exposed a public
+//! `Positive::new_unchecked`, an `unsafe fn` that performed no unsafe
+//! operation: it moved a logical precondition onto the caller without making
+//! a violation Rust undefined behaviour. It has been removed. Every public
+//! path that yields a `Positive` validates the invariant.
+//!
 //! ## License
 //!
 //! This project is licensed under the MIT License.
 //!
+
+#![forbid(unsafe_code)]
 
 pub mod constants;
 pub mod error;
