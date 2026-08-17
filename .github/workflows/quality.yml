@@ -32,6 +32,7 @@ jobs:
         # dtolnay/rust-toolchain master (the generic action; the version branches
         # such as `1.14` hardcode that Rust release and reject a `toolchain` input)
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        id: toolchain
         with:
           toolchain: stable
           components: rustfmt, clippy
@@ -46,9 +47,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-quality-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-quality-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-quality-
+            ${{ runner.os }}-quality-${{ steps.toolchain.outputs.cachekey }}-
 
       - name: Install make
         run: sudo apt-get update && sudo apt-get install -y make

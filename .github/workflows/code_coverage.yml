@@ -42,6 +42,7 @@ jobs:
         # dtolnay/rust-toolchain master (the generic action; the version branches
         # such as `1.14` hardcode that Rust release and reject a `toolchain` input)
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        id: toolchain
         with:
           toolchain: stable
           components: llvm-tools-preview
@@ -55,9 +56,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-coverage-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-coverage-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-coverage-
+            ${{ runner.os }}-coverage-${{ steps.toolchain.outputs.cachekey }}-
 
       # cargo-tarpaulin was rebuilt from source on every run, which dominated
       # the job. It is now pinned and cached on its own key, so it is compiled
