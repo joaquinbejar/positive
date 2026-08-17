@@ -678,6 +678,10 @@ impl Positive {
     /// same as a negative one — the floor at zero is returned.
     #[cfg(not(feature = "non-zero"))]
     #[must_use]
+    #[deprecated(
+        since = "0.5.1",
+        note = "saturating arithmetic hides underflow and overflow; use `checked_sub` or `checked_sub_dec` and handle the error, or explicitly floor at zero with `new_decimal(self.0.saturating_sub(*other))`. Removal is scheduled for the release after 0.6.0"
+    )]
     pub fn sub_or_zero(&self, other: &Decimal) -> Positive {
         if &self.0 > other {
             match dec_sub(self.0, *other, "sub_or_zero") {
@@ -2140,6 +2144,10 @@ impl RelativeEq for Positive {
         let abs_diff = difference.abs();
         if abs_diff <= epsilon {
             return true;
+        }
+        if max_relative.is_sign_negative() {
+            // Negative tolerance makes no sense; reject the comparison.
+            return false;
         }
         let largest = self.0.abs().max(other.0.abs());
         match dec_mul(max_relative, largest, "relative_eq") {
