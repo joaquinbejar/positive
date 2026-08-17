@@ -754,6 +754,12 @@ impl Positive {
     /// ```
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the domain error"]
     pub fn checked_powd(&self, p0: Decimal) -> Result<Positive, PositiveError> {
+        if self.0.is_zero() && p0.is_sign_negative() {
+            return Err(PositiveError::arithmetic_error(
+                "powd",
+                "zero to a negative power is undefined",
+            ));
+        }
         let result = self.0.checked_powd(p0).ok_or_else(|| {
             PositiveError::arithmetic_error("powd", "power is undefined or overflows")
         })?;
