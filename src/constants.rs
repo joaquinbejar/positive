@@ -205,15 +205,21 @@ pub const E: Positive = Positive::from_decimal_const(Decimal::E);
 // Special Values
 // =============================================================================
 
-/// Default epsilon value for approximate comparisons.
-/// Used for floating-point tolerance in equality checks.
+/// Default absolute tolerance for approximate comparisons.
+///
+/// Dimensionless: it is an absolute difference expressed in the same units as
+/// the values being compared, not a ratio. Used as the default epsilon by the
+/// `approx` implementations.
 pub const EPSILON: Decimal = dec!(1e-16);
 
-/// Tolerance for `Positive == Decimal` comparisons.
+/// Default relative tolerance for approximate comparisons.
 ///
-/// Precomputed as `EPSILON * 100` (= `1e-14`). Declaring it as a `const`
-/// avoids the `Decimal::from(100)` construction and multiplication on
-/// every `PartialEq<Decimal>` call.
+/// Dimensionless ratio, precomputed as `EPSILON * 100` (= `1e-14`). Used as
+/// the default `max_relative` by the `approx` implementations, and as the
+/// suggested tolerance for [`Positive::approx_eq_dec`].
+///
+/// It is no longer applied implicitly by `Positive == Decimal`, which is exact
+/// as of 0.6.0.
 pub const EPSILON_CMP: Decimal = dec!(1e-14);
 
 /// The largest value a `Positive` can hold: `Decimal::MAX`
@@ -238,5 +244,8 @@ pub const MAX: Positive = Positive::from_decimal_const(Decimal::MAX);
 )]
 pub const INFINITY: Positive = Positive::from_decimal_const(Decimal::MAX);
 
-/// Number of days in a year.
+/// Number of days in a year, in days (365, ignoring leap years).
+///
+/// Use this for day-count conventions that assume a fixed 365-day year, such
+/// as ACT/365. It is not a calendar year length: 2024 had 366 days.
 pub const DAYS_IN_A_YEAR: Positive = Positive::from_decimal_const(dec!(365.0));
