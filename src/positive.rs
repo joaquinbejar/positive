@@ -1760,59 +1760,137 @@ impl Positive {
 
     /// Checks whether the value is a multiple of another `f64` value.
     ///
-    /// Prefer [`Positive::is_multiple_of_dec`] for full `Decimal`
-    /// precision — this variant lifts the value to `f64` and compares
-    /// against `f64::EPSILON`, which can misclassify values beyond the
-    /// ~15-digit precision of `f64`.
+    /// Prefer [`Positive::is_multiple_of_dec`] for full `Decimal` precision —
+    /// this variant lifts the value to `f64` and compares against
+    /// `f64::EPSILON`, which misclassifies values beyond the ~15 significant
+    /// digits `f64` can carry.
+    ///
+    /// # Edge cases
+    ///
+    /// Until removal the contract is:
+    ///
+    /// - a zero divisor returns `false` — nothing is a multiple of zero;
+    /// - a non-finite divisor (`NaN`, `±inf`) returns `false`;
+    /// - a value that cannot be represented as a finite `f64` returns `false`
+    ///   rather than panicking.
+    ///
+    /// # Deprecated
+    ///
+    /// Scheduled for removal in the release following 0.6.0. Use
+    /// [`Positive::is_multiple_of_dec`] or [`Positive::is_multiple_of`], both
+    /// of which are exact.
     #[deprecated(
         since = "0.5.0",
-        note = "use `is_multiple_of_dec` for Decimal-native precision"
+        note = "use `is_multiple_of_dec` for Decimal-native precision; removal is scheduled for the release after 0.6.0"
     )]
     #[must_use]
     pub fn is_multiple(&self, other: f64) -> bool {
-        let value = self.to_f64();
+        if !other.is_finite() || other == 0.0 {
+            return false;
+        }
+        // `to_f64` panics for values outside f64's range; the checked form
+        // reports them as "not a multiple" instead.
+        let Some(value) = self.to_f64_checked() else {
+            return false;
+        };
         if !value.is_finite() {
             return false;
         }
         let remainder = value % other;
-        remainder.abs() < f64::EPSILON || (other - remainder.abs()).abs() < f64::EPSILON
+        remainder.abs() < f64::EPSILON || (other.abs() - remainder.abs()).abs() < f64::EPSILON
     }
 
-    /// Checks whether the value is a multiple of a `Decimal` without
-    /// lifting to `f64`.
+    /// Checks whether the value is an exact multiple of a `Decimal`.
     ///
-    /// Returns `false` when `other` is zero. Uses
-    /// [`Decimal::checked_rem`] so pathological inputs cannot panic.
+    /// The remainder must be exactly zero. Returns `false` when `other` is
+    /// zero, since nothing is a multiple of zero. Uses a checked remainder, so
+    /// no input can panic.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// assert!(pos_or_panic!(15.0).is_multiple_of_dec(dec!(5)));
+    /// assert!(!pos_or_panic!(15.0).is_multiple_of_dec(dec!(4)));
+    /// assert!(!pos_or_panic!(15.0).is_multiple_of_dec(dec!(0)));
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_multiple_of_dec(&self, other: Decimal) -> bool {
-        if other.is_zero() {
-            return false;
-        }
-        self.0
-            .checked_rem(other)
-            .map(|r| r.is_zero())
+        dec_rem(self.0, other, "is_multiple_of_dec")
+            .map(|remainder| remainder.is_zero())
             .unwrap_or(false)
     }
 
-    /// Checks whether the value is a multiple of another `Positive`
-    /// value.
+    /// Checks whether the value is an exact multiple of another `Positive`.
     ///
-    /// Returns `false` when `other` is zero. Uses
-    /// [`Decimal::checked_rem`] so pathological inputs cannot panic
-    /// (rule 50). The remainder is compared against [`EPSILON`] to
-    /// tolerate the tiny rounding artefacts `Decimal` can introduce at
-    /// the edge of its 28-digit mantissa.
+    /// The remainder must be exactly zero, matching
+    /// [`Positive::is_multiple_of_dec`] for the same divisor. Earlier versions
+    /// compared the remainder against [`EPSILON`], so `1e-17` reported itself
+    /// as a multiple of one — a false positive from a predicate that has an
+    /// exact answer. Tolerance-based checking is available under the explicit
+    /// name [`Positive::is_multiple_of_within`].
+    ///
+    /// Returns `false` when `other` is zero. Uses a checked remainder, so no
+    /// input can panic.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, pos_or_panic};
+    /// use rust_decimal::Decimal;
+    ///
+    /// assert!(pos_or_panic!(15.0).is_multiple_of(&pos_or_panic!(5.0)));
+    ///
+    /// let tiny = Positive::new_decimal(Decimal::new(1, 17)).unwrap();
+    /// assert!(!tiny.is_multiple_of(&Positive::ONE));
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_multiple_of(&self, other: &Positive) -> bool {
-        if other.is_zero() {
+        self.is_multiple_of_dec(other.0)
+    }
+
+    /// Checks whether the value is a multiple of another `Positive` within an
+    /// explicit tolerance.
+    ///
+    /// This is the tolerance-based counterpart of
+    /// [`Positive::is_multiple_of`], which is exact. The tolerance is supplied
+    /// by the caller rather than baked in, because the right tolerance depends
+    /// on the magnitudes involved and on what the caller is modelling.
+    ///
+    /// A remainder is accepted when it is within `tolerance` of either zero or
+    /// the divisor, so values just below an exact multiple count too.
+    ///
+    /// Returns `false` when `other` is zero. Cannot panic.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, pos_or_panic};
+    /// use rust_decimal::Decimal;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let tiny = Positive::new_decimal(Decimal::new(1, 17)).unwrap();
+    /// assert!(!tiny.is_multiple_of(&Positive::ONE));
+    /// assert!(tiny.is_multiple_of_within(&Positive::ONE, dec!(1e-16)));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn is_multiple_of_within(&self, other: &Positive, tolerance: Decimal) -> bool {
+        let Ok(remainder) = dec_rem(self.0, other.0, "is_multiple_of_within") else {
             return false;
+        };
+        let distance_to_zero = remainder.abs();
+        if distance_to_zero <= tolerance {
+            return true;
         }
-        self.0
-            .checked_rem(other.0)
-            .map(|r| r.abs() < EPSILON)
-            .unwrap_or(false)
+        match dec_sub(other.0, distance_to_zero, "is_multiple_of_within") {
+            Ok(distance_to_divisor) => distance_to_divisor.abs() <= tolerance,
+            Err(_) => false,
+        }
     }
 
     /// Creates a new `Positive` value without validating the positivity

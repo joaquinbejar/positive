@@ -2641,3 +2641,125 @@ fn test_ordering_is_total_across_the_range() {
         Positive::new_decimal(Decimal::MAX).unwrap()
     );
 }
+
+// ===== Exact multiplicity predicates (issue #78) =====
+
+/// The false positive the issue reports: `1e-17` is not a multiple of one, but
+/// the epsilon comparison said it was.
+#[test]
+fn test_is_multiple_of_1e_17_modulo_one_is_false() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 17)).unwrap();
+    assert!(!tiny.is_multiple_of(&Positive::ONE));
+}
+
+/// The two APIs disagreed: one was exact, the other tolerant. They must agree
+/// for equivalent divisors.
+#[test]
+fn test_is_multiple_of_agrees_with_is_multiple_of_dec() {
+    let cases = [
+        (15.0_f64, 5.0_f64),
+        (15.0, 4.0),
+        (15.0, 3.0),
+        (15.0, 1.0),
+        (0.3, 0.1),
+        (2.5, 0.5),
+        (1.0, 7.0),
+    ];
+    for (value, divisor) in cases {
+        let value = Positive::new(value).unwrap();
+        let divisor = Positive::new(divisor).unwrap();
+        assert_eq!(
+            value.is_multiple_of(&divisor),
+            value.is_multiple_of_dec(divisor.to_dec()),
+            "disagreement for {value} % {divisor}"
+        );
+    }
+}
+
+#[test]
+fn test_is_multiple_of_exact_multiples() {
+    let value = pos_or_panic!(15.0);
+    assert!(value.is_multiple_of(&pos_or_panic!(5.0)));
+    assert!(value.is_multiple_of(&pos_or_panic!(3.0)));
+    assert!(value.is_multiple_of(&Positive::ONE));
+    assert!(value.is_multiple_of(&pos_or_panic!(15.0)));
+}
+
+#[test]
+fn test_is_multiple_of_near_multiples_are_rejected() {
+    let value = Positive::new_decimal(dec!(15.0000000000000000000000001)).unwrap();
+    assert!(!value.is_multiple_of(&pos_or_panic!(5.0)));
+    assert!(!value.is_multiple_of_dec(dec!(5)));
+}
+
+#[test]
+fn test_is_multiple_of_dec_negative_divisor() {
+    // A negative divisor still yields an exact zero remainder for a true
+    // multiple; the sign of the divisor does not change divisibility.
+    let value = pos_or_panic!(15.0);
+    assert!(value.is_multiple_of_dec(dec!(-5)));
+    assert!(!value.is_multiple_of_dec(dec!(-4)));
+}
+
+#[test]
+fn test_is_multiple_of_zero_divisor_is_false() {
+    let value = pos_or_panic!(15.0);
+    assert!(!value.is_multiple_of_dec(Decimal::ZERO));
+    if let Ok(zero) = Positive::new_decimal(Decimal::ZERO) {
+        assert!(!value.is_multiple_of(&zero));
+    }
+}
+
+/// No remainder operation may panic, including at the extremes.
+#[test]
+fn test_is_multiple_of_at_decimal_extremes_does_not_panic() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let _ = max.is_multiple_of(&tiny);
+    let _ = tiny.is_multiple_of(&max);
+    let _ = max.is_multiple_of_dec(Decimal::MIN);
+    let _ = max.is_multiple_of_dec(Decimal::MAX);
+    assert!(max.is_multiple_of_dec(Decimal::MAX));
+}
+
+/// Tolerance-based checking is still available, but only under a name that
+/// says so and with the tolerance supplied by the caller.
+#[test]
+fn test_is_multiple_of_within_tolerance() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 17)).unwrap();
+    assert!(!tiny.is_multiple_of(&Positive::ONE));
+    assert!(tiny.is_multiple_of_within(&Positive::ONE, dec!(1e-16)));
+    assert!(!tiny.is_multiple_of_within(&Positive::ONE, dec!(1e-18)));
+}
+
+#[test]
+fn test_is_multiple_of_within_accepts_just_below_a_multiple() {
+    // 14.999... is within tolerance of the next multiple of 5.
+    let value = Positive::new_decimal(dec!(14.99999999999999999)).unwrap();
+    assert!(value.is_multiple_of_within(&pos_or_panic!(5.0), dec!(1e-15)));
+    assert!(!value.is_multiple_of(&pos_or_panic!(5.0)));
+}
+
+#[test]
+fn test_is_multiple_of_within_zero_divisor_is_false() {
+    let value = pos_or_panic!(15.0);
+    if let Ok(zero) = Positive::new_decimal(Decimal::ZERO) {
+        assert!(!value.is_multiple_of_within(&zero, dec!(1e-9)));
+    }
+}
+
+/// The deprecated `f64` variant keeps a defined contract until it is removed.
+#[test]
+#[allow(deprecated)]
+fn test_deprecated_is_multiple_edge_cases() {
+    let value = pos_or_panic!(15.0);
+    assert!(value.is_multiple(5.0));
+    assert!(!value.is_multiple(4.0));
+    // zero and non-finite divisors are false, not a panic or a division by zero
+    assert!(!value.is_multiple(0.0));
+    assert!(!value.is_multiple(f64::NAN));
+    assert!(!value.is_multiple(f64::INFINITY));
+    // a value outside f64's range reports false instead of panicking
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let _ = max.is_multiple(5.0);
+}
