@@ -131,7 +131,7 @@
 //!
 //! // Special values
 //! let epsilon = EPSILON;           // Small tolerance for comparisons
-//! let inf = Positive::INFINITY;    // Maximum value
+//! let max = Positive::MAX;         // Largest representable value (Decimal::MAX)
 //! ```
 //!
 //! ### Conversions
@@ -141,12 +141,14 @@
 //!
 //! let p = pos_or_panic!(5.5);
 //!
-//! let f: f64 = p.to_f64();              // Panics on failure
-//! let f: Option<f64> = p.to_f64_checked(); // Returns None on failure
-//! let f: f64 = p.to_f64_lossy();        // Returns 0.0 on failure
-//! let i: i64 = p.to_i64();              // To signed integer
-//! let u: u64 = p.to_u64();              // To unsigned integer
-//! let d = p.to_dec();                   // To Decimal
+//! let f: f64 = p.to_f64();                  // Infallible, lossy beyond ~15 digits
+//! let d = p.to_dec();                       // To Decimal, exact
+//!
+//! // Integer conversions are fallible and truncate toward zero
+//! let i: Result<i64, _> = i64::try_from(p);
+//! let u: Result<u64, _> = u64::try_from(p);
+//! let n: Result<usize, _> = usize::try_from(p);
+//! let maybe: Option<u64> = p.to_u64_checked();
 //! ```
 //!
 //! ### Arithmetic Operations

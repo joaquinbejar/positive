@@ -444,7 +444,25 @@ impl Positive {
     pub const PI: Positive = crate::constants::PI;
     /// The mathematical constant e (Euler's number) represented as a `Positive` value.
     pub const E: Positive = crate::constants::E;
+    /// The largest value a `Positive` can hold: `Decimal::MAX`
+    /// (79,228,162,514,264,337,593,543,950,335).
+    ///
+    /// Mirrors [`crate::constants::MAX`]. This is a real maximum, not an
+    /// infinity — `Decimal` has no infinite value — and every operation treats
+    /// it as the finite number it is.
+    pub const MAX: Positive = crate::constants::MAX;
+
     /// Represents the maximum positive value possible (effectively infinity).
+    ///
+    /// # Deprecated
+    ///
+    /// Use [`Positive::MAX`]. Same value, accurate name; see the constant's
+    /// documentation for why the old one was misleading.
+    #[deprecated(
+        since = "0.6.0",
+        note = "renamed to `Positive::MAX`: the value is Decimal::MAX, not an infinity"
+    )]
+    #[allow(deprecated)]
     pub const INFINITY: Positive = crate::constants::INFINITY;
 
     /// Creates a new `Positive` value from a 64-bit floating-point number.
@@ -2458,10 +2476,12 @@ impl PartialEq<f64> for Positive {
 }
 
 impl Display for Positive {
+    /// Renders the underlying `Decimal` exactly.
+    ///
+    /// Earlier versions special-cased `Positive::INFINITY` and printed
+    /// `f64::MAX` — a value roughly 10^279 times larger than the one the type
+    /// actually held, and one that `Positive::new` rejects.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if *self == Positive::INFINITY {
-            return write!(f, "{}", f64::MAX);
-        }
         if let Some(precision) = f.precision() {
             return write!(f, "{:.1$}", self.0, precision);
         }
@@ -2475,9 +2495,6 @@ impl Display for Positive {
 
 impl fmt::Debug for Positive {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if *self == Positive::INFINITY {
-            return write!(f, "{}", f64::MAX);
-        }
         // Same normalisation as `Display` so integer-valued decimals
         // render without trailing `.0` and fractional ones without
         // trailing zeros.
@@ -2506,9 +2523,11 @@ impl PartialEq<Decimal> for Positive {
 // default `Serialize`/`Deserialize`, which emits a JSON string (e.g.
 // `"12.345"`). The manual impls below preserve a long-standing,
 // downstream-visible JSON contract:
-//   - `Positive::INFINITY` serialises to the literal `f64::MAX`.
 //   - integer-valued `Positive`s serialise as JSON integers (`42`).
 //   - fractional `Positive`s serialise as JSON numbers (`12.345`).
+// The `f64::MAX` sentinel for `Positive::INFINITY` was removed in #76: it
+// reported a number roughly 10^279 times larger than the value held, and it
+// round-tripped a value that `Positive::new(f64::MAX)` rejects.
 // Switching to `#[serde(transparent)]` would change the wire format
 // and is therefore deferred. Duplicated validation inside the
 // deserialiser is removed separately in #27.
@@ -2517,9 +2536,6 @@ impl Serialize for Positive {
     where
         S: Serializer,
     {
-        if *self == Positive::INFINITY {
-            return serializer.serialize_f64(f64::MAX);
-        }
         if self.0.scale() == 0 {
             serializer.serialize_i64(
                 self.0
@@ -2577,12 +2593,9 @@ impl<'de> Deserialize<'de> for Positive {
             where
                 E: serde::de::Error,
             {
-                if value.is_infinite() && value.is_sign_positive() {
-                    return Ok(Positive::INFINITY);
-                }
-                if value == f64::MAX {
-                    return Ok(Positive::INFINITY);
-                }
+                // No sentinel: an infinite or out-of-range float is not a
+                // representable Positive and is reported as such, rather than
+                // being silently mapped onto Decimal::MAX.
                 let decimal = Decimal::from_f64(value)
                     .ok_or_else(|| serde::de::Error::custom("Failed to convert f64 to Decimal"))?;
                 Positive::new_decimal(decimal).map_err(serde::de::Error::custom)
