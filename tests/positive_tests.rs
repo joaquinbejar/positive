@@ -1916,6 +1916,34 @@ fn test_compare_extremes_does_not_panic() {
     assert!(max != Decimal::MIN);
 }
 
+/// A nonzero `f64` below `Decimal`'s smallest step rounds to zero during
+/// conversion; the comparison must decide by sign instead of the rounded
+/// value, so it never reports equality with zero (issue #77 review).
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_tiny_f64_underflow_is_not_equal_to_zero() {
+    use std::cmp::Ordering;
+    let zero = Positive::ZERO;
+    assert!(zero != 1e-100_f64);
+    assert!(1e-100_f64 != zero);
+    assert_eq!(zero.partial_cmp(&1e-100_f64), Some(Ordering::Less));
+    assert_eq!(1e-100_f64.partial_cmp(&zero), Some(Ordering::Greater));
+    assert!(zero != -1e-100_f64);
+    assert_eq!(zero.partial_cmp(&-1e-100_f64), Some(Ordering::Greater));
+}
+
+/// Nonzero values dominate any float that underflows the conversion,
+/// regardless of its sign.
+#[test]
+fn test_tiny_f64_underflow_orders_below_positive_values() {
+    use std::cmp::Ordering;
+    let one = Positive::ONE;
+    assert!(one != 1e-100_f64);
+    assert_eq!(one.partial_cmp(&1e-100_f64), Some(Ordering::Greater));
+    assert_eq!(one.partial_cmp(&-1e-100_f64), Some(Ordering::Greater));
+    assert_eq!(1e-100_f64.partial_cmp(&one), Some(Ordering::Less));
+}
+
 #[test]
 fn test_approx_comparison_at_extremes_does_not_panic() {
     use approx::{AbsDiffEq, RelativeEq};
@@ -2418,4 +2446,198 @@ fn test_math_wrappers_agree_with_checked_variants() {
     );
     assert_eq!(value.ln(), value.checked_ln().unwrap());
     assert_eq!(value.log10(), value.checked_log10().unwrap());
+}
+
+// ===== Lawful, panic-free cross-type comparisons (issue #77) =====
+
+/// `PartialEq` requires `a == b` and `b == a` to agree. They did not: one side
+/// compared within `EPSILON_CMP`, the other exactly.
+#[test]
+fn test_partial_eq_decimal_is_symmetric_at_epsilon_boundary() {
+    let value = pos_or_panic!(1.000000000000005);
+    let one = Decimal::ONE;
+    assert_eq!(value == one, one == value);
+    assert!(value != one, "equality against Decimal must be exact");
+}
+
+#[test]
+fn test_partial_eq_decimal_is_symmetric_for_equal_values() {
+    let value = pos_or_panic!(2.5);
+    assert!(value == dec!(2.5));
+    assert!(dec!(2.5) == value);
+}
+
+/// Equality and ordering must not panic when the operands sit at opposite
+/// extremes of `Decimal`'s range.
+#[test]
+fn test_comparisons_at_decimal_extremes_do_not_panic() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(max != Decimal::MIN);
+    assert!(Decimal::MIN != max);
+    assert!(max > Decimal::MIN);
+    assert!(Decimal::MIN < max);
+}
+
+/// Ordering against `Decimal` is available in both directions and agrees.
+#[test]
+fn test_partial_ord_decimal_is_symmetric() {
+    let value = pos_or_panic!(5.0);
+    assert!(value > dec!(4));
+    assert!(dec!(4) < value);
+    assert!(value < dec!(6));
+    assert!(dec!(6) > value);
+}
+
+// --- f64 ---
+
+/// Lowering the `Decimal` to `f64` collapsed every integer above 2^53 onto its
+/// neighbours. Lifting the `f64` to `Decimal` keeps them distinct.
+#[test]
+fn test_f64_equality_is_exact_above_2_53() {
+    let big = Positive::new_decimal(Decimal::from(9_007_199_254_740_993u64)).unwrap();
+    // 2^53 + 1 is not representable as f64; it rounds to 2^53.
+    let as_float = 9_007_199_254_740_992.0_f64;
+    assert!(big != as_float);
+    assert!(as_float != big);
+    assert!(big > as_float);
+}
+
+#[test]
+fn test_f64_comparison_is_symmetric() {
+    let value = pos_or_panic!(2.5);
+    assert_eq!(value == 2.5, 2.5 == value);
+    assert_eq!(value == 2.6, 2.6 == value);
+    assert!(value == 2.5);
+    assert!(2.5 == value);
+    assert!(value < 3.0);
+    assert!(3.0 > value);
+    assert!(value > 2.0);
+    assert!(2.0 < value);
+}
+
+#[test]
+fn test_f64_comparison_reference_forms_agree() {
+    let value = pos_or_panic!(2.5);
+    let by_ref = &value;
+    assert!(by_ref == 2.5);
+    assert!(2.5 == by_ref);
+    assert!(by_ref < 3.0);
+    assert!(3.0 > by_ref);
+}
+
+/// `NaN` is unordered against everything; it must never compare equal and must
+/// never panic.
+#[test]
+// The point of this test is precisely to compare against NaN through the
+// crate's own PartialEq/PartialOrd impls, so the rustc lint that steers
+// float-to-float NaN comparisons towards `is_nan()` does not apply.
+#[allow(invalid_nan_comparisons)]
+fn test_f64_nan_is_unordered() {
+    let value = pos_or_panic!(2.5);
+    assert!(value != f64::NAN);
+    assert!(f64::NAN != value);
+    assert_eq!(value.partial_cmp(&f64::NAN), None);
+    assert!(!(value < f64::NAN));
+    assert!(!(value > f64::NAN));
+}
+
+/// Infinities have exact answers even though `Decimal` cannot hold them.
+#[test]
+fn test_f64_infinities_order_correctly() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(max < f64::INFINITY);
+    assert!(f64::INFINITY > max);
+    assert!(max > f64::NEG_INFINITY);
+    assert!(f64::NEG_INFINITY < max);
+    assert!(max != f64::INFINITY);
+}
+
+/// A finite `f64` beyond `Decimal`'s range used to convert to `0.0` and
+/// compare a huge value as equal to zero.
+#[test]
+fn test_f64_beyond_decimal_range_orders_correctly() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(max < f64::MAX);
+    assert!(f64::MAX > max);
+    assert!(max != f64::MAX);
+}
+
+/// A value too large for `f64` must not panic on comparison — the previous
+/// `PartialEq<f64> for Positive` went through the panicking `to_f64`.
+#[test]
+fn test_f64_comparison_of_huge_positive_does_not_panic() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(max != 1.0);
+    assert!(max > 1.0);
+}
+
+// --- approximate comparison is now explicit ---
+
+#[test]
+fn test_approx_eq_dec_replaces_implicit_epsilon_equality() {
+    use positive::constants::EPSILON_CMP;
+    let value = pos_or_panic!(1.0);
+    assert!(value.approx_eq_dec(dec!(1.000000000000005), EPSILON_CMP));
+    assert!(!value.approx_eq_dec(dec!(1.1), EPSILON_CMP));
+    // exact equality disagrees, which is exactly why both exist
+    assert!(value != dec!(1.000000000000005));
+}
+
+#[test]
+fn test_approx_eq_dec_at_extremes_does_not_panic() {
+    use positive::constants::EPSILON_CMP;
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert!(!max.approx_eq_dec(Decimal::MIN, EPSILON_CMP));
+}
+
+// --- Eq / Ord / Hash consistency ---
+
+/// `Hash` and `Eq` must agree: equal values hash equally, and the derived
+/// `Ord` must agree with `PartialEq`.
+#[test]
+fn test_eq_ord_hash_are_consistent() {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    fn hash_of(value: &Positive) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    let a = pos_or_panic!(2.5);
+    let b = pos_or_panic!(2.5);
+    let c = pos_or_panic!(3.5);
+
+    assert_eq!(a, b);
+    assert_eq!(hash_of(&a), hash_of(&b));
+    assert_eq!(a.cmp(&b), std::cmp::Ordering::Equal);
+
+    assert_ne!(a, c);
+    assert_eq!(a.cmp(&c), std::cmp::Ordering::Less);
+    assert_eq!(a.partial_cmp(&c), Some(std::cmp::Ordering::Less));
+}
+
+/// Ordering must be a total order over the values a `Positive` can hold,
+/// including the extremes.
+#[test]
+fn test_ordering_is_total_across_the_range() {
+    let mut values = [
+        Positive::new_decimal(Decimal::MAX).unwrap(),
+        pos_or_panic!(1.0),
+        Positive::new_decimal(Decimal::new(1, 28)).unwrap(),
+        pos_or_panic!(100.0),
+    ];
+    values.sort();
+    for window in values.windows(2) {
+        assert!(window[0] <= window[1]);
+    }
+    assert_eq!(
+        values[0],
+        Positive::new_decimal(Decimal::new(1, 28)).unwrap()
+    );
+    assert_eq!(
+        values[values.len() - 1],
+        Positive::new_decimal(Decimal::MAX).unwrap()
+    );
 }

@@ -181,6 +181,69 @@ pub(crate) fn dec_div(
         .ok_or_else(|| PositiveError::arithmetic_error(op, "overflow"))
 }
 
+// ===========================================================================
+// Exact cross-type comparison
+// ===========================================================================
+
+/// Compares a `Positive`'s `Decimal` against an `f64` **exactly**.
+///
+/// The comparison lifts the `f64` into `Decimal` rather than lowering the
+/// `Decimal` into `f64`. Lowering was the previous behaviour and it collapsed
+/// distinct large decimal integers onto the same float — every value above
+/// `2^53` compared equal to its neighbours — as well as mapping conversion
+/// failures onto `0.0`, which made a huge value compare as zero.
+///
+/// The remaining cases are decided without conversion, because they have exact
+/// answers that `Decimal` cannot represent:
+///
+/// - `NaN` is unordered against everything, so the result is `None`.
+/// - `+inf` is greater than every `Positive`; `-inf` is smaller than every one.
+/// - A finite `f64` whose magnitude exceeds `Decimal`'s range is likewise
+///   larger (or smaller) than any representable value.
+/// - A nonzero `f64` whose magnitude is below `Decimal`'s smallest step would
+///   round to zero during conversion; its sign decides the answer instead of
+///   the rounded value, so no nonzero float ever compares equal to zero.
+#[inline]
+fn cmp_decimal_f64(lhs: Decimal, rhs: f64) -> Option<Ordering> {
+    if rhs.is_nan() {
+        return None;
+    }
+    if rhs.is_infinite() {
+        return Some(if rhs.is_sign_positive() {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        });
+    }
+    match Decimal::from_f64(rhs) {
+        Some(rhs_dec) => {
+            if rhs_dec.is_zero() && rhs != 0.0 {
+                // The conversion underflowed a nonzero float to zero.
+                return Some(if rhs > 0.0 {
+                    // A tiny positive float sits strictly between zero and
+                    // Decimal's smallest positive value.
+                    if lhs.is_zero() {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
+                    }
+                } else {
+                    // Every `Positive` is at least zero, so it exceeds any
+                    // negative float.
+                    Ordering::Greater
+                });
+            }
+            lhs.partial_cmp(&rhs_dec)
+        }
+        // Finite, but outside `Decimal`'s range: its sign decides the answer.
+        None => Some(if rhs > 0.0 {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }),
+    }
+}
+
 /// Computes the remainder of two `Decimal`s, mapping division by zero and
 /// overflow to typed errors.
 #[inline]
@@ -1148,6 +1211,40 @@ impl Positive {
         self.0.is_zero()
     }
 
+    /// Compares this value with a `Decimal` within an absolute tolerance.
+    ///
+    /// `==` against a `Decimal` is exact. This is the explicitly named
+    /// approximate comparison that replaces the epsilon behaviour `==` used to
+    /// have implicitly — implicitly, and asymmetrically, since the reverse
+    /// comparison was exact.
+    ///
+    /// The subtraction is checked, so operands at opposite extremes of
+    /// `Decimal`'s range report "not close" instead of panicking.
+    ///
+    /// For `Positive`-to-`Positive` approximate comparison use the `approx`
+    /// traits ([`AbsDiffEq`] / [`RelativeEq`]), which this crate implements.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{constants::EPSILON_CMP, pos_or_panic};
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let value = pos_or_panic!(1.0);
+    /// assert!(value.approx_eq_dec(dec!(1.000000000000005), EPSILON_CMP));
+    /// assert!(!value.approx_eq_dec(dec!(1.1), EPSILON_CMP));
+    /// // exact equality disagrees, which is the point of having both
+    /// assert!(value != dec!(1.000000000000005));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn approx_eq_dec(&self, other: Decimal, epsilon: Decimal) -> bool {
+        match dec_sub(self.0, other, "approx_eq_dec") {
+            Ok(difference) => difference.abs() <= epsilon,
+            Err(_) => false,
+        }
+    }
+
     /// Returns the smallest integer greater than or equal to the value.
     ///
     /// # Panics
@@ -1857,28 +1954,28 @@ impl From<Positive> for usize {
 impl PartialEq<&Positive> for f64 {
     #[inline]
     fn eq(&self, other: &&Positive) -> bool {
-        self == &other.0.to_f64().unwrap_or(0.0)
+        cmp_decimal_f64(other.0, *self) == Some(Ordering::Equal)
     }
 }
 
 impl PartialOrd<&Positive> for f64 {
     #[inline]
     fn partial_cmp(&self, other: &&Positive) -> Option<Ordering> {
-        self.partial_cmp(&other.0.to_f64().unwrap_or(0.0))
+        cmp_decimal_f64(other.0, *self).map(Ordering::reverse)
     }
 }
 
 impl PartialEq<Positive> for f64 {
     #[inline]
     fn eq(&self, other: &Positive) -> bool {
-        self == &other.0.to_f64().unwrap_or(0.0)
+        cmp_decimal_f64(other.0, *self) == Some(Ordering::Equal)
     }
 }
 
 impl PartialOrd<Positive> for f64 {
     #[inline]
     fn partial_cmp(&self, other: &Positive) -> Option<Ordering> {
-        self.partial_cmp(&other.0.to_f64().unwrap_or(0.0))
+        cmp_decimal_f64(other.0, *self).map(Ordering::reverse)
     }
 }
 
@@ -2121,28 +2218,33 @@ impl Add<f64> for Positive {
 impl PartialOrd<f64> for Positive {
     #[inline]
     fn partial_cmp(&self, other: &f64) -> Option<Ordering> {
-        self.0.to_f64().unwrap_or(0.0).partial_cmp(other)
+        cmp_decimal_f64(self.0, *other)
     }
 }
 
 impl PartialEq<f64> for &Positive {
     #[inline]
     fn eq(&self, other: &f64) -> bool {
-        self.0.to_f64().unwrap_or(0.0) == *other
+        cmp_decimal_f64(self.0, *other) == Some(Ordering::Equal)
     }
 }
 
 impl PartialOrd<f64> for &Positive {
     #[inline]
     fn partial_cmp(&self, other: &f64) -> Option<Ordering> {
-        self.0.to_f64().unwrap_or(0.0).partial_cmp(other)
+        cmp_decimal_f64(self.0, *other)
     }
 }
 
 impl PartialEq<f64> for Positive {
+    /// Exact equality against an `f64`, symmetric with `f64 == Positive`.
+    ///
+    /// The previous implementation went through [`Positive::to_f64`], which
+    /// panics for values outside `f64`'s range, and collapsed distinct decimal
+    /// integers above `2^53` onto the same float.
     #[inline]
     fn eq(&self, other: &f64) -> bool {
-        self.to_f64() == *other
+        cmp_decimal_f64(self.0, *other) == Some(Ordering::Equal)
     }
 }
 
@@ -2175,20 +2277,19 @@ impl fmt::Debug for Positive {
 }
 
 impl PartialEq<Decimal> for Positive {
+    /// Exact equality, symmetric with `Decimal == Positive`.
+    ///
+    /// Earlier versions compared `|self - other| <= EPSILON_CMP` here while the
+    /// reverse impl compared exactly, so `positive == decimal` and `decimal ==
+    /// positive` could disagree — `PartialEq` requires them to agree. The
+    /// subtraction also overflowed and panicked at the extremes of `Decimal`'s
+    /// range.
+    ///
+    /// Approximate comparison now lives exclusively in the `approx` impls and
+    /// in [`Positive::approx_eq_dec`].
     #[inline]
     fn eq(&self, other: &Decimal) -> bool {
-        // Raw subtraction panics when the operands straddle `Decimal`'s range
-        // (`Decimal::MAX` against `Decimal::MIN`, for instance). A difference
-        // that cannot be represented is by definition larger than the
-        // comparison epsilon, so an overflow means "not equal".
-        //
-        // The epsilon comparison itself, and the asymmetry it creates against
-        // `Decimal == Positive`, are addressed separately in issue #77. This
-        // change only removes the panic.
-        match dec_sub(self.0, *other, "compare") {
-            Ok(difference) => difference.abs() <= EPSILON_CMP,
-            Err(_) => false,
-        }
+        self.0 == *other
     }
 }
 
@@ -2465,6 +2566,15 @@ impl PartialOrd<Decimal> for Positive {
     #[inline]
     fn partial_cmp(&self, other: &Decimal) -> Option<Ordering> {
         self.0.partial_cmp(other)
+    }
+}
+
+impl PartialOrd<Positive> for Decimal {
+    /// Mirror of `Positive: PartialOrd<Decimal>`, so ordering is available in
+    /// both directions and agrees.
+    #[inline]
+    fn partial_cmp(&self, other: &Positive) -> Option<Ordering> {
+        self.partial_cmp(&other.0)
     }
 }
 
