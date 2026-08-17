@@ -200,6 +200,9 @@ pub(crate) fn dec_div(
 /// - `+inf` is greater than every `Positive`; `-inf` is smaller than every one.
 /// - A finite `f64` whose magnitude exceeds `Decimal`'s range is likewise
 ///   larger (or smaller) than any representable value.
+/// - A nonzero `f64` whose magnitude is below `Decimal`'s smallest step would
+///   round to zero during conversion; its sign decides the answer instead of
+///   the rounded value, so no nonzero float ever compares equal to zero.
 #[inline]
 fn cmp_decimal_f64(lhs: Decimal, rhs: f64) -> Option<Ordering> {
     if rhs.is_nan() {
@@ -213,7 +216,25 @@ fn cmp_decimal_f64(lhs: Decimal, rhs: f64) -> Option<Ordering> {
         });
     }
     match Decimal::from_f64(rhs) {
-        Some(rhs_dec) => lhs.partial_cmp(&rhs_dec),
+        Some(rhs_dec) => {
+            if rhs_dec.is_zero() && rhs != 0.0 {
+                // The conversion underflowed a nonzero float to zero.
+                return Some(if rhs > 0.0 {
+                    // A tiny positive float sits strictly between zero and
+                    // Decimal's smallest positive value.
+                    if lhs.is_zero() {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
+                    }
+                } else {
+                    // Every `Positive` is at least zero, so it exceeds any
+                    // negative float.
+                    Ordering::Greater
+                });
+            }
+            lhs.partial_cmp(&rhs_dec)
+        }
         // Finite, but outside `Decimal`'s range: its sign decides the answer.
         None => Some(if rhs > 0.0 {
             Ordering::Less

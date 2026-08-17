@@ -1916,6 +1916,34 @@ fn test_compare_extremes_does_not_panic() {
     assert!(max != Decimal::MIN);
 }
 
+/// A nonzero `f64` below `Decimal`'s smallest step rounds to zero during
+/// conversion; the comparison must decide by sign instead of the rounded
+/// value, so it never reports equality with zero (issue #77 review).
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_tiny_f64_underflow_is_not_equal_to_zero() {
+    use std::cmp::Ordering;
+    let zero = Positive::ZERO;
+    assert!(zero != 1e-100_f64);
+    assert!(1e-100_f64 != zero);
+    assert_eq!(zero.partial_cmp(&1e-100_f64), Some(Ordering::Less));
+    assert_eq!(1e-100_f64.partial_cmp(&zero), Some(Ordering::Greater));
+    assert!(zero != -1e-100_f64);
+    assert_eq!(zero.partial_cmp(&-1e-100_f64), Some(Ordering::Greater));
+}
+
+/// Nonzero values dominate any float that underflows the conversion,
+/// regardless of its sign.
+#[test]
+fn test_tiny_f64_underflow_orders_below_positive_values() {
+    use std::cmp::Ordering;
+    let one = Positive::ONE;
+    assert!(one != 1e-100_f64);
+    assert_eq!(one.partial_cmp(&1e-100_f64), Some(Ordering::Greater));
+    assert_eq!(one.partial_cmp(&-1e-100_f64), Some(Ordering::Greater));
+    assert_eq!(1e-100_f64.partial_cmp(&one), Some(Ordering::Less));
+}
+
 #[test]
 fn test_approx_comparison_at_extremes_does_not_panic() {
     use approx::{AbsDiffEq, RelativeEq};
