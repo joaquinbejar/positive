@@ -353,7 +353,15 @@ pub(crate) fn unwrap_or_panic(
     match result {
         Ok(value) => value,
         Err(PositiveError::OutOfBounds { .. }) => invariant_panic(op),
-        Err(_) => overflow_panic(op),
+        Err(PositiveError::ArithmeticError { .. }) => overflow_panic(op),
+        Err(PositiveError::InvalidPrecision { precision, .. }) => precision_panic(precision),
+        // These two cannot be produced by the checked counterparts of the
+        // panicking wrappers today; the exhaustive match forces a future
+        // variant, or a new error path, to be classified here deliberately
+        // instead of being mislabelled as overflow.
+        Err(
+            error @ (PositiveError::InvalidValue { .. } | PositiveError::ConversionError { .. }),
+        ) => panic!("Positive {op} failed: {error}"),
     }
 }
 
@@ -1545,9 +1553,12 @@ impl Positive {
     /// This method is not available when the `non-zero` feature is enabled
     /// because the result could be zero.
     ///
-    /// Overflow cannot occur: the subtraction is performed with
-    /// [`Decimal::checked_sub`], and an overflowing difference is treated the
-    /// same as a negative one — the floor at zero is returned.
+    /// # Panics
+    ///
+    /// Panics when the subtraction overflows `Decimal` — a strictly positive
+    /// difference too large to represent is an overflow, not a negative one,
+    /// and flooring it at zero would silently corrupt the result. Use
+    /// [`Positive::checked_sub_dec`] for the non-panicking form.
     #[cfg(not(feature = "non-zero"))]
     #[must_use]
     #[deprecated(
@@ -1555,10 +1566,13 @@ impl Positive {
         note = "saturating arithmetic hides underflow and overflow; use `checked_sub` or `checked_sub_dec` and handle the error, or explicitly floor at zero with `new_decimal(self.0.saturating_sub(*other))`. Removal is scheduled for the release after 0.6.0"
     )]
     pub fn sub_or_zero(&self, other: &Decimal) -> Positive {
-        // Delegating to the checked path collapses the guard, the arithmetic
-        // and the floor into one expression: a difference that is negative or
-        // that overflows both come back as an error, and both floor at zero.
-        self.checked_sub_dec(*other).unwrap_or(Positive::ZERO)
+        if &self.0 <= other {
+            // A proven negative-or-zero difference: the documented floor.
+            return Positive::ZERO;
+        }
+        // The difference is strictly positive, so the checked path can only
+        // fail on overflow; that must surface, not floor at zero.
+        unwrap_or_panic(self.checked_sub_dec(*other), "sub_or_zero")
     }
 
     /// Subtracts a decimal value, returning `None` if the result would be
@@ -2784,7 +2798,16 @@ fn guard_nonzero_divisor(divisor: Decimal, op: &'static str) {
 fn dec_or_panic(result: Result<Decimal, PositiveError>, op: &'static str) -> Decimal {
     match result {
         Ok(value) => value,
-        Err(_) => overflow_panic(op),
+        Err(PositiveError::ArithmeticError { .. }) => overflow_panic(op),
+        // The Decimal kernels only fail with ArithmeticError; the exhaustive
+        // match forces any future variant reaching an operator to be
+        // classified deliberately instead of being mislabelled as overflow.
+        Err(
+            error @ (PositiveError::InvalidValue { .. }
+            | PositiveError::ConversionError { .. }
+            | PositiveError::OutOfBounds { .. }
+            | PositiveError::InvalidPrecision { .. }),
+        ) => panic!("Positive {op} failed: {error}"),
     }
 }
 
