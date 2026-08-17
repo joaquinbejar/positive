@@ -48,7 +48,7 @@
 //! dependency is added, so it is deliberately proposed rather than introduced.
 
 use positive::{Positive, PositiveError, is_valid_positive_value};
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, RoundingStrategy};
 use rust_decimal_macros::dec;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::str::FromStr;
@@ -129,6 +129,11 @@ fn test_no_checked_arithmetic_panics_over_the_matrix() {
             must_not_panic(&format!("checked_mul({pair})"), || lhs.checked_mul(rhs)).ok();
             must_not_panic(&format!("checked_div({pair})"), || lhs.checked_div(rhs)).ok();
             must_not_panic(&format!("checked_rem({pair})"), || lhs.checked_rem(rhs)).ok();
+            must_not_panic(&format!("checked_pow({pair})"), || lhs.checked_pow(*rhs)).ok();
+            must_not_panic(&format!("checked_div_with_strategy({pair})"), || {
+                lhs.checked_div_with_strategy(rhs, RoundingStrategy::MidpointNearestEven)
+            })
+            .ok();
             must_not_panic(&format!("checked_clamp({pair})"), || {
                 lhs.checked_clamp(*rhs, *lhs)
             })
@@ -200,6 +205,12 @@ fn test_no_checked_mathematical_api_panics_over_the_matrix() {
         })
         .ok();
         must_not_panic(&format!("checked_sqrt({label})"), || value.checked_sqrt()).ok();
+        // The deprecated alias must stay panic-free until it is removed.
+        #[allow(deprecated)]
+        must_not_panic(&format!("sqrt_checked({label})"), || value.sqrt_checked()).ok();
+        must_not_panic(&format!("to_f64_checked({label})"), || {
+            value.to_f64_checked()
+        });
         must_not_panic(&format!("checked_exp({label})"), || value.checked_exp()).ok();
         must_not_panic(&format!("checked_ln({label})"), || value.checked_ln()).ok();
         must_not_panic(&format!("checked_log10({label})"), || value.checked_log10()).ok();
@@ -243,6 +254,23 @@ fn test_no_checked_mathematical_api_panics_over_the_matrix() {
             .ok();
         }
     }
+}
+
+/// Zero raised to a negative power is undefined; the checked power entry
+/// points must report it as a domain error instead of a silent zero.
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_zero_to_a_negative_power_is_a_domain_error() {
+    assert!(matches!(
+        Positive::ZERO
+            .checked_powd(Decimal::NEGATIVE_ONE)
+            .unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
+    assert!(matches!(
+        Positive::ZERO.checked_powi(-1).unwrap_err(),
+        PositiveError::ArithmeticError { .. }
+    ));
 }
 
 /// Division by zero must be an error on every division entry point, never a
@@ -495,6 +523,40 @@ fn test_equality_is_symmetric_over_the_matrix() {
                 "Positive/f64 equality is asymmetric for {lhs_label} / {rhs_label}"
             );
         }
+    }
+}
+
+/// Raw `f64` boundaries that no representable `Decimal` can produce: finite
+/// nonzero floats below `Decimal`'s smallest step underflow the conversion,
+/// and must order by sign instead of aliasing to zero.
+#[test]
+fn test_raw_f64_underflow_boundaries_never_alias_to_zero() {
+    use std::cmp::Ordering;
+
+    let one = Positive::ONE;
+    for tiny in [1e-100_f64, f64::MIN_POSITIVE, -1e-100_f64] {
+        assert!(one != tiny, "ONE compared equal to {tiny}");
+        assert_eq!(
+            one.partial_cmp(&tiny),
+            Some(Ordering::Greater),
+            "ONE must exceed {tiny}"
+        );
+    }
+
+    #[cfg(not(feature = "non-zero"))]
+    {
+        let zero = Positive::ZERO;
+        for tiny in [1e-100_f64, f64::MIN_POSITIVE] {
+            assert!(zero != tiny, "ZERO compared equal to {tiny}");
+            assert!(tiny != zero, "{tiny} compared equal to ZERO");
+            assert_eq!(
+                zero.partial_cmp(&tiny),
+                Some(Ordering::Less),
+                "ZERO must be below {tiny}"
+            );
+        }
+        assert!(zero != -1e-100_f64);
+        assert_eq!(zero.partial_cmp(&-1e-100_f64), Some(Ordering::Greater));
     }
 }
 
