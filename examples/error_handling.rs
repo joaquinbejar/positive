@@ -78,6 +78,7 @@ fn main() {
     println!("\n--- Flooring At Zero ---");
 
     #[cfg(not(feature = "non-zero"))]
+    #[allow(deprecated)]
     {
         let small = pos_or_panic!(5.0);
         let large = pos_or_panic!(100.0);

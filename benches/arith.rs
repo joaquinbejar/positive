@@ -94,7 +94,10 @@ fn bench_sub_variants(c: &mut Criterion) {
     g.bench_function("checked_sub", |bencher| {
         bencher.iter(|| black_box(black_box(a).checked_sub(black_box(&b))))
     });
+    // Still benchmarked until the method is removed after 0.6.0, so a
+    // regression in the deprecated path is still visible.
     #[cfg(not(feature = "non-zero"))]
+    #[allow(deprecated)]
     g.bench_function("sub_or_zero", |bencher| {
         bencher.iter(|| black_box(black_box(a).sub_or_zero(black_box(&d))))
     });

@@ -513,6 +513,9 @@ fn test_is_zero_non_zero() {
 
 #[cfg(not(feature = "non-zero"))]
 #[test]
+// sub_or_zero is deprecated but still shipped, so its behaviour stays tested
+// until the removal lands.
+#[allow(deprecated)]
 fn test_sub_or_zero() {
     let a = pos_or_panic!(5.0);
     assert_eq!(a.sub_or_zero(&dec!(3.0)).to_f64(), 2.0);
@@ -1964,6 +1967,7 @@ fn test_sub_or_none_cannot_panic_on_overflow() {
 #[cfg(not(feature = "non-zero"))]
 #[test]
 #[should_panic(expected = "Positive arithmetic overflow in sub_or_zero")]
+#[allow(deprecated)]
 fn test_sub_or_zero_panics_on_overflow_instead_of_flooring() {
     let max = Positive::new_decimal(Decimal::MAX).unwrap();
     let _ = max.sub_or_zero(&Decimal::MIN);
@@ -1973,6 +1977,7 @@ fn test_sub_or_zero_panics_on_overflow_instead_of_flooring() {
 /// differences.
 #[cfg(not(feature = "non-zero"))]
 #[test]
+#[allow(deprecated)]
 fn test_sub_or_zero_still_floors_proven_negative_differences() {
     let one = Positive::ONE;
     assert_eq!(one.sub_or_zero(&Decimal::ONE), Positive::ZERO);

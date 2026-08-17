@@ -51,11 +51,11 @@ fn main() {
     println!("a.checked_sub(&b) = {result:?}");
 
     #[cfg(not(feature = "non-zero"))]
+    #[allow(deprecated)]
     {
         // `sub_or_zero` floors at zero, and the name says so at the call site.
-        // `saturating_sub` did the same thing but is deprecated: saturating
-        // arithmetic hides underflow, which is data corruption in financial
-        // code.
+        // It is itself deprecated in favour of `checked_sub_dec`, and is shown
+        // here only because it still ships until the release after 0.6.0.
         let floored = b.sub_or_zero(&a.to_dec());
         println!("b.sub_or_zero(a) = {floored} (floors at ZERO)");
     }
