@@ -48,7 +48,7 @@ jobs:
           components: llvm-tools-preview
 
       - name: Cache Rust dependencies
-        # actions/cache v6
+        # actions/cache v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
@@ -65,7 +65,7 @@ jobs:
       # once per version rather than once per push.
       - name: Cache cargo-tarpaulin
         id: cache-tarpaulin
-        # actions/cache v6
+        # actions/cache v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cargo/bin/cargo-tarpaulin
