@@ -45,6 +45,18 @@ lint-fix:
 clean:
 	cargo clean
 
+# Security audit — mirrors .github/workflows/audit.yml exactly.
+# Ignored advisories, their reachability rationale, owner and review date live
+# in .cargo/audit.toml, which is the single source of truth for both local and
+# CI runs.
+.PHONY: audit
+audit: check-cargo-audit
+	cargo audit --deny warnings
+
+.PHONY: check-cargo-audit
+check-cargo-audit:
+	@command -v cargo-audit > /dev/null || (echo "Installing cargo-audit..."; cargo install cargo-audit --no-default-features)
+
 # Pre-push checks
 .PHONY: check
 check: test fmt-check lint

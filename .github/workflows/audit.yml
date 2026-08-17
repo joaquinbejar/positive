@@ -5,17 +5,50 @@ on:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+      - '.cargo/audit.toml'
+      - '.github/workflows/audit.yml'
   pull_request:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+      - '.cargo/audit.toml'
+      - '.github/workflows/audit.yml'
   schedule:
     - cron: '0 0 * * *'
+  workflow_dispatch:
+
+# Read-only. The audit step is configured with `createIssues: false`, so no
+# `issues: write` permission is required. Do not widen this without also
+# changing that input — the previous configuration attempted issue creation
+# with a read-only token and failed silently on every scheduled run.
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   audit:
+    name: cargo audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/audit@v1
-        name: Audit Rust Dependencies
+      - name: Checkout
+        # actions/checkout v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Audit Rust dependencies
+        # actions-rust-lang/audit v1.2.7
+        uses: actions-rust-lang/audit@72c09e02f132669d52284a3323acdb503cfc1a24
+        with:
+          # Advisories are ignored exclusively through `.cargo/audit.toml`,
+          # which carries the reachability rationale, owner and review date for
+          # each entry. Keep this input empty so that file stays the single
+          # source of truth.
+          ignore: ''
+          # Informational advisories (unmaintained / unsound / notice) must fail
+          # the run; `.cargo/audit.toml` opts into reporting them.
+          denyWarnings: 'true'
+          # Issue creation needs `issues: write`, which this workflow
+          # deliberately does not grant. A failing run is the signal.
+          createIssues: 'false'
