@@ -16,10 +16,82 @@ build:
 release:
 	cargo build --release
 
-# Run tests
+# Run tests in the default configuration.
 .PHONY: test
 test:
 	LOGLEVEL=WARN cargo test
+
+# Run the full feature matrix required by rules/global_rules.md.
+#
+# The three configurations are separate runs on purpose: the positivity
+# invariant differs between them, and cfg-gated items only exist in their own
+# configuration. An --all-features run cannot stand in for the default one,
+# which is why the coverage job is not a substitute for this target.
+.PHONY: test-matrix
+test-matrix:
+	LOGLEVEL=WARN cargo test --all-features
+	LOGLEVEL=WARN cargo test --no-default-features
+	LOGLEVEL=WARN cargo test --features non-zero
+
+# Reject the patterns rules/global_rules.md bans from production code:
+# .unwrap() and .expect() outside #[cfg(test)].
+#
+# Three exclusions, each narrow and visible:
+#   - comment lines, because an example inside /// is documentation;
+#   - everything from the first #[cfg(test)] in a file onwards, which is how
+#     this crate places its test modules;
+#   - lines carrying an explicit `// scan-banned: allow -- <reason>` marker, so
+#     an exemption is recorded at the site rather than hidden in this file.
+#
+# `unsafe` is enforced separately and more strongly by #![forbid(unsafe_code)]
+# in src/lib.rs, which is a compile error rather than a grep.
+.PHONY: scan-banned
+scan-banned:
+	@found=$$(for f in $$(find src -name '*.rs'); do \
+		awk -v file="$$f" '/#\[cfg\(test\)\]/ { exit } { print file ":" NR ":" $$0 }' "$$f"; \
+	done \
+		| grep -E '\.unwrap\(\)|\.expect\(' \
+		| grep -v -E ':[0-9]+:[[:space:]]*(///|//!|//|\*)' \
+		| grep -v 'scan-banned: allow' || true); \
+	if [ -n "$$found" ]; then \
+		echo "Banned patterns found in production code:"; \
+		echo "$$found"; \
+		exit 1; \
+	fi; \
+	echo "OK: no .unwrap()/.expect() in production code"
+	@$(MAKE) --no-print-directory scan-indexing
+
+# Unchecked `[]` indexing is the third banned panic source, and a grep cannot
+# tell `arr[i]` from a macro or a type parameter. Clippy can, so the check runs
+# as a lint rather than a scan. It is restricted to `--lib`, because the ban
+# covers `src/` only: tests and benches index freely by design. Each feature
+# configuration is linted separately, since cfg-gated code is only visible in
+# its own.
+.PHONY: scan-indexing
+scan-indexing:
+	cargo clippy --lib --all-features -- -D clippy::indexing_slicing
+	cargo clippy --lib --no-default-features -- -D clippy::indexing_slicing
+	cargo clippy --lib --features non-zero -- -D clippy::indexing_slicing
+	@echo "OK: no unchecked indexing in production code"
+
+# Documentation must build with zero warnings.
+.PHONY: doc-check
+doc-check:
+	RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+
+# The README is generated from the crate docs. Verify rather than rewrite, so
+# the check cannot pass by silently changing a tracked file.
+.PHONY: readme-check
+readme-check: check-cargo-readme
+	@cargo readme > /tmp/positive-readme-check.md
+	@diff -u README.md /tmp/positive-readme-check.md \
+		|| (echo "README.md is out of date; run 'make readme'" && exit 1)
+	@echo "OK: README.md matches the crate docs"
+
+# Release build must be warning-free.
+.PHONY: release-check
+release-check:
+	RUSTFLAGS="-D warnings" cargo build --release
 
 # Format the code
 .PHONY: fmt
@@ -83,9 +155,15 @@ audit: check-cargo-audit
 check-cargo-audit:
 	@command -v cargo-audit > /dev/null || (echo "Installing cargo-audit..."; cargo install cargo-audit --no-default-features)
 
-# Pre-push checks
+# The quality gate. Mirrors rules/global_rules.md exactly, and is what CI runs.
+#
+# Every target below is read-only: nothing here formats, fixes or regenerates a
+# tracked file. Mutating helpers live under explicitly named targets — fmt,
+# fix, lint-fix, readme — and are never invoked by a gate.
 .PHONY: check
-check: test fmt-check lint
+check: fmt-check lint lint-strict test-matrix release-check doc-check readme-check scan-banned audit
+	@echo ""
+	@echo "All quality gates passed."
 
 # Run the project
 .PHONY: run
@@ -96,8 +174,15 @@ run:
 fix:
 	cargo fix --allow-staged --allow-dirty
 
+# Pre-push is the gate, not a fixer. It used to run `cargo fix`, `clippy --fix`
+# and regenerate the README, so a command named as a check mutated the worktree
+# and could turn a failure into a silent edit. Use `make fixup` for that.
 .PHONY: pre-push
-pre-push: fix fmt lint-fix test readme doc
+pre-push: check
+
+# Explicitly mutating convenience target. Never invoked by a gate.
+.PHONY: fixup
+fixup: fix fmt lint-fix readme
 
 .PHONY: doc
 doc:

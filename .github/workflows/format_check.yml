@@ -41,5 +41,7 @@ jobs:
       - name: Install make
         run: sudo apt-get install make
 
+      # `make fmt` rewrites the files and then succeeds, so this job used to
+      # pass on unformatted input. `make fmt-check` reports instead.
       - name: Format check
-        run: make fmt
+        run: make fmt-check

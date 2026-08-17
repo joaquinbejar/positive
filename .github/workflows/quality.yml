@@ -1,0 +1,71 @@
+name: Quality Gate
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+      - 'release/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  quality:
+    name: make check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # actions/checkout v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-quality-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-quality-
+
+      - name: Install make
+        run: sudo apt-get update && sudo apt-get install -y make
+
+      # This is the whole gate. It is the same single command a contributor
+      # runs locally, so CI and local development cannot diverge: the matrix,
+      # the strict lints, the banned-pattern scan, the README check and the
+      # audit are all defined once, in the Makefile.
+      - name: Run the quality gate
+        run: make check
+
+      # `make check` must be read-only. If any target mutated a tracked file,
+      # the gate would be able to "pass" by editing the worktree instead of
+      # reporting — which is exactly what `make fmt` in the format job and
+      # `cargo fix` in pre-push used to do.
+      - name: Assert the gate changed nothing
+        run: |
+          if ! git diff --quiet; then
+            echo "The quality gate modified tracked files:"
+            git --no-pager diff --stat
+            exit 1
+          fi
+          echo "OK: the gate is read-only"
