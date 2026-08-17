@@ -8,7 +8,44 @@
 //!
 //! This module provides error handling for operations involving positive decimal values,
 //! including validation, arithmetic operations, conversions, and precision issues.
+//!
+//! # The stable variant set
+//!
+//! [`PositiveError`] has exactly five variants and that set is stable across
+//! minor versions:
+//!
+//! | Variant | Raised by |
+//! |---|---|
+//! | [`PositiveError::InvalidValue`] | input that cannot be interpreted as a decimal at all (`NaN`, `±inf`, unparsable text) |
+//! | [`PositiveError::ArithmeticError`] | overflow, division by zero, or a result that breaks the positivity invariant |
+//! | [`PositiveError::ConversionError`] | a value that is valid but not representable in the destination type |
+//! | [`PositiveError::OutOfBounds`] | a well-formed decimal outside the permitted range |
+//! | [`PositiveError::InvalidPrecision`] | a decimal precision outside the range `Decimal` supports |
+//!
+//! No catch-all variant exists. Every fallible public API in this crate
+//! returns one of the five above, so callers can match exhaustively without a
+//! wildcard arm.
+//!
+//! # Exact values, no `f64` projection
+//!
+//! [`PositiveError::OutOfBounds`] carries `Decimal` values for the offending
+//! input and both bounds. Projecting them through `f64` — as previous versions
+//! did — silently rounded the very value the caller needed to diagnose, and
+//! could not represent the true bounds at all: under the `non-zero` feature the
+//! smallest permitted value is `1e-28`, which is far below `f64::MIN_POSITIVE`
+//! in decimal terms and is not a binary-representable float.
+//!
+//! [`PositiveError::InvalidValue`] carries the offending input rendered as a
+//! `String`, because the inputs it reports on (`NaN`, `±inf`, arbitrary text)
+//! have no `Decimal` representation by definition.
+//!
+//! # Message style
+//!
+//! Every `Display` message begins with a lowercase letter and includes the
+//! offending input where one exists, so messages compose cleanly when wrapped
+//! by a caller's own error type.
 
+use rust_decimal::Decimal;
 use thiserror::Error;
 
 /// Represents errors that can occur during positive decimal operations.
@@ -17,24 +54,32 @@ use thiserror::Error;
 /// when working with positive decimal values, including validation, arithmetic operations,
 /// conversions, and precision issues.
 ///
-/// # Variants
+/// See the [module documentation](self) for the stable variant set and the
+/// rationale behind the field types.
 ///
-/// * `InvalidValue` - Value cannot be represented as a valid positive decimal
-/// * `ArithmeticError` - Error during mathematical operations
-/// * `ConversionError` - Error when converting between types
-/// * `OutOfBounds` - Value exceeds defined limits
-/// * `InvalidPrecision` - Invalid decimal precision settings
-/// * `Other` - Catch-all for other errors
-#[derive(Error, Debug)]
+/// # Examples
+///
+/// ```rust
+/// use positive::{Positive, PositiveError};
+///
+/// let err = Positive::new(-1.0).unwrap_err();
+/// assert!(matches!(err, PositiveError::OutOfBounds { .. }));
+/// assert!(err.to_string().starts_with("value -1 is out of bounds"));
+/// ```
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum PositiveError {
     /// Error when attempting to create a positive decimal from an invalid value.
     ///
-    /// Occurs when a value cannot be properly represented as a positive decimal,
-    /// such as when it's NaN, infinity, negative, or otherwise unsuitable.
-    #[error("Invalid positive value {value}: {reason}")]
+    /// Occurs when a value cannot be interpreted as a decimal at all — `NaN`,
+    /// `±inf`, or text that does not parse. Values that *are* well-formed
+    /// decimals but fall outside the permitted range produce
+    /// [`PositiveError::OutOfBounds`] instead.
+    ///
+    /// `value` holds the offending input rendered exactly as it was supplied.
+    #[error("invalid positive value '{value}': {reason}")]
     InvalidValue {
-        /// The problematic value that caused the error.
-        value: f64,
+        /// The problematic input, rendered exactly as supplied.
+        value: String,
         /// Detailed explanation of why the value is invalid.
         reason: String,
     },
@@ -44,7 +89,7 @@ pub enum PositiveError {
     /// Occurs during mathematical operations such as addition, subtraction,
     /// multiplication, or division when the operation cannot be completed
     /// correctly (e.g., division by zero, overflow, result would be negative).
-    #[error("Arithmetic error during {operation}: {reason}")]
+    #[error("arithmetic error during {operation}: {reason}")]
     ArithmeticError {
         /// The operation that failed (e.g., "subtraction", "division").
         operation: String,
@@ -54,10 +99,10 @@ pub enum PositiveError {
 
     /// Error when converting between decimal types.
     ///
-    /// Occurs when a decimal value cannot be correctly converted from one
-    /// representation to another, such as between different precision levels
-    /// or between different decimal formats.
-    #[error("Failed to convert from {from_type} to {to_type}: {reason}")]
+    /// Occurs when a value is well-formed but cannot be represented in the
+    /// destination type — for example a `Decimal` larger than `u64::MAX`, or an
+    /// `f64` outside the range `Decimal` can hold.
+    #[error("failed to convert from {from_type} to {to_type}: {reason}")]
     ConversionError {
         /// The source type being converted from.
         from_type: String,
@@ -67,35 +112,32 @@ pub enum PositiveError {
         reason: String,
     },
 
-    /// Error when a decimal value exceeds its bounds.
+    /// Error when a decimal value falls outside the permitted range.
     ///
-    /// Occurs when a decimal value falls outside of acceptable minimum
-    /// or maximum values for a specific calculation context.
-    #[error("Value {value} is out of bounds (min: {min}, max: {max})")]
+    /// All three fields are exact `Decimal` values. `min` reflects the active
+    /// feature configuration: `0` by default, and `1e-28` — the smallest
+    /// strictly positive `Decimal` — under the `non-zero` feature.
+    #[error("value {value} is out of bounds (min: {min}, max: {max})")]
     OutOfBounds {
         /// The value that is out of bounds.
-        value: f64,
-        /// The minimum acceptable value.
-        min: f64,
-        /// The maximum acceptable value.
-        max: f64,
+        value: Decimal,
+        /// The minimum acceptable value, inclusive.
+        min: Decimal,
+        /// The maximum acceptable value, inclusive.
+        max: Decimal,
     },
 
     /// Error when decimal precision is invalid.
     ///
-    /// Occurs when an operation specifies or results in an invalid precision
-    /// level that cannot be properly handled.
-    #[error("Invalid precision {precision}: {reason}")]
+    /// Occurs when an operation specifies a number of decimal places outside
+    /// the range `rust_decimal::Decimal` supports (0 through 28 inclusive).
+    #[error("invalid precision {precision}: {reason}")]
     InvalidPrecision {
-        /// The problematic precision value.
-        precision: i32,
+        /// The problematic precision value, in decimal places.
+        precision: u32,
         /// Detailed explanation of why the precision is invalid.
         reason: String,
     },
-
-    /// Catch-all error for other positive decimal errors.
-    #[error("Positive error: {0}")]
-    Other(String),
 }
 
 /// A specialized `Result` type for positive decimal operations.
@@ -113,18 +155,27 @@ impl PositiveError {
     ///
     /// # Arguments
     ///
-    /// * `value` - The problematic floating-point value
+    /// * `value` - The problematic input, rendered exactly as supplied
     /// * `reason` - Explanation of why the value is invalid
     ///
     /// # Returns
     ///
     /// A new `PositiveError::InvalidValue` instance
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::PositiveError;
+    ///
+    /// let err = PositiveError::invalid_value("NaN", "not a number");
+    /// assert_eq!(err.to_string(), "invalid positive value 'NaN': not a number");
+    /// ```
     #[cold]
     #[inline(never)]
     #[must_use]
-    pub fn invalid_value(value: f64, reason: &str) -> Self {
+    pub fn invalid_value(value: &str, reason: &str) -> Self {
         PositiveError::InvalidValue {
-            value,
+            value: value.to_string(),
             reason: reason.to_string(),
         }
     }
@@ -139,6 +190,18 @@ impl PositiveError {
     /// # Returns
     ///
     /// A new `PositiveError::ArithmeticError` instance
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::PositiveError;
+    ///
+    /// let err = PositiveError::arithmetic_error("division", "division by zero");
+    /// assert_eq!(
+    ///     err.to_string(),
+    ///     "arithmetic error during division: division by zero"
+    /// );
+    /// ```
     #[cold]
     #[inline(never)]
     #[must_use]
@@ -160,6 +223,18 @@ impl PositiveError {
     /// # Returns
     ///
     /// A new `PositiveError::ConversionError` instance
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::PositiveError;
+    ///
+    /// let err = PositiveError::conversion_error("Positive", "u64", "value exceeds u64::MAX");
+    /// assert_eq!(
+    ///     err.to_string(),
+    ///     "failed to convert from Positive to u64: value exceeds u64::MAX"
+    /// );
+    /// ```
     #[cold]
     #[inline(never)]
     #[must_use]
@@ -175,17 +250,28 @@ impl PositiveError {
     ///
     /// # Arguments
     ///
-    /// * `value` - The out-of-bounds floating-point value
+    /// * `value` - The out-of-bounds value, exact
     /// * `min` - The lower bound (inclusive) of the valid range
     /// * `max` - The upper bound (inclusive) of the valid range
     ///
     /// # Returns
     ///
     /// A new `PositiveError::OutOfBounds` instance
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::PositiveError;
+    /// use rust_decimal::Decimal;
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let err = PositiveError::out_of_bounds(dec!(-5), Decimal::ZERO, Decimal::MAX);
+    /// assert!(err.to_string().starts_with("value -5 is out of bounds"));
+    /// ```
     #[cold]
     #[inline(never)]
     #[must_use]
-    pub fn out_of_bounds(value: f64, min: f64, max: f64) -> Self {
+    pub fn out_of_bounds(value: Decimal, min: Decimal, max: Decimal) -> Self {
         PositiveError::OutOfBounds { value, min, max }
     }
 
@@ -193,16 +279,28 @@ impl PositiveError {
     ///
     /// # Arguments
     ///
-    /// * `precision` - The problematic precision value
+    /// * `precision` - The problematic precision, in decimal places
     /// * `reason` - Explanation of why the precision is invalid
     ///
     /// # Returns
     ///
     /// A new `PositiveError::InvalidPrecision` instance
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::PositiveError;
+    ///
+    /// let err = PositiveError::invalid_precision(29, "decimal supports at most 28 places");
+    /// assert_eq!(
+    ///     err.to_string(),
+    ///     "invalid precision 29: decimal supports at most 28 places"
+    /// );
+    /// ```
     #[cold]
     #[inline(never)]
     #[must_use]
-    pub fn invalid_precision(precision: i32, reason: &str) -> Self {
+    pub fn invalid_precision(precision: u32, reason: &str) -> Self {
         PositiveError::InvalidPrecision {
             precision,
             reason: reason.to_string(),
@@ -210,72 +308,101 @@ impl PositiveError {
     }
 }
 
-impl From<&str> for PositiveError {
-    #[cold]
-    #[inline(never)]
-    fn from(s: &str) -> Self {
-        PositiveError::Other(s.to_string())
-    }
-}
-
-impl From<String> for PositiveError {
-    #[cold]
-    #[inline(never)]
-    fn from(s: String) -> Self {
-        PositiveError::Other(s)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal_macros::dec;
 
     #[test]
     fn test_invalid_value_error() {
-        let error = PositiveError::invalid_value(-1.0, "Value cannot be negative");
+        let error = PositiveError::invalid_value("-1", "value cannot be negative");
         assert!(matches!(error, PositiveError::InvalidValue { .. }));
-        assert!(error.to_string().contains("cannot be negative"));
+        assert_eq!(
+            error.to_string(),
+            "invalid positive value '-1': value cannot be negative"
+        );
     }
 
     #[test]
     fn test_arithmetic_error() {
-        let error = PositiveError::arithmetic_error("subtraction", "Result would be negative");
+        let error = PositiveError::arithmetic_error("subtraction", "result would be negative");
         assert!(matches!(error, PositiveError::ArithmeticError { .. }));
-        assert!(error.to_string().contains("would be negative"));
+        assert_eq!(
+            error.to_string(),
+            "arithmetic error during subtraction: result would be negative"
+        );
     }
 
     #[test]
     fn test_conversion_error() {
-        let error = PositiveError::conversion_error("f64", "Positive", "Value out of range");
+        let error = PositiveError::conversion_error("f64", "Positive", "value out of range");
         assert!(matches!(error, PositiveError::ConversionError { .. }));
-        assert!(error.to_string().contains("out of range"));
+        assert_eq!(
+            error.to_string(),
+            "failed to convert from f64 to Positive: value out of range"
+        );
     }
 
     #[test]
-    fn test_out_of_bounds_error() {
-        let error = PositiveError::out_of_bounds(-5.0, 0.0, 100.0);
-        assert!(matches!(error, PositiveError::OutOfBounds { .. }));
-        assert!(error.to_string().contains("-5"));
+    fn test_out_of_bounds_error_keeps_exact_decimal() {
+        let value = dec!(-0.0000000000000000000000000001);
+        let error = PositiveError::out_of_bounds(value, Decimal::ZERO, Decimal::MAX);
+        match &error {
+            PositiveError::OutOfBounds { value: v, min, max } => {
+                assert_eq!(*v, value);
+                assert_eq!(*min, Decimal::ZERO);
+                assert_eq!(*max, Decimal::MAX);
+            }
+            other => panic!("expected OutOfBounds, got {other:?}"),
+        }
+        assert!(
+            error
+                .to_string()
+                .starts_with("value -0.0000000000000000000000000001 is out of bounds")
+        );
     }
 
     #[test]
     fn test_invalid_precision_error() {
-        let error = PositiveError::invalid_precision(-1, "Precision must be non-negative");
+        let error = PositiveError::invalid_precision(29, "decimal supports at most 28 places");
         assert!(matches!(error, PositiveError::InvalidPrecision { .. }));
-        assert!(error.to_string().contains("non-negative"));
+        assert_eq!(
+            error.to_string(),
+            "invalid precision 29: decimal supports at most 28 places"
+        );
+    }
+
+    /// Every `Display` message must start lowercase so it composes when a
+    /// caller wraps it in their own error type.
+    #[test]
+    fn test_all_messages_start_lowercase() {
+        let errors = [
+            PositiveError::invalid_value("NaN", "not a number"),
+            PositiveError::arithmetic_error("division", "division by zero"),
+            PositiveError::conversion_error("f64", "Positive", "out of range"),
+            PositiveError::out_of_bounds(dec!(-1), Decimal::ZERO, Decimal::MAX),
+            PositiveError::invalid_precision(29, "too large"),
+        ];
+        for error in &errors {
+            let rendered = error.to_string();
+            let first = rendered
+                .chars()
+                .next()
+                .expect("error message must not be empty");
+            assert!(
+                first.is_lowercase(),
+                "message does not start lowercase: {rendered}"
+            );
+        }
     }
 
     #[test]
-    fn test_from_str() {
-        let error: PositiveError = "Custom error message".into();
-        assert!(matches!(error, PositiveError::Other(_)));
-        assert!(error.to_string().contains("Custom error message"));
-    }
-
-    #[test]
-    fn test_from_string() {
-        let error: PositiveError = String::from("Another error").into();
-        assert!(matches!(error, PositiveError::Other(_)));
-        assert!(error.to_string().contains("Another error"));
+    fn test_error_is_clone_and_eq() {
+        let error = PositiveError::arithmetic_error("division", "division by zero");
+        assert_eq!(error.clone(), error);
+        assert_ne!(
+            error,
+            PositiveError::arithmetic_error("division", "overflow")
+        );
     }
 }

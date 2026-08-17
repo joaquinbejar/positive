@@ -6,7 +6,7 @@
 
 //! Integration tests for the Positive type.
 
-use positive::{Positive, pos, pos_or_panic, spos};
+use positive::{Positive, PositiveError, pos, pos_or_panic, spos};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::str::FromStr;
@@ -1567,4 +1567,145 @@ fn test_is_multiple_of_dec_zero_divisor() {
     use rust_decimal_macros::dec;
     let p = pos_or_panic!(15.0);
     assert!(!p.is_multiple_of_dec(dec!(0)));
+}
+
+// ===== PositiveError contract (issue #80) =====
+
+/// `FromStr` must report failures through `PositiveError`, not `String`, and
+/// must preserve the offending input verbatim.
+#[test]
+fn test_from_str_unparsable_returns_invalid_value_with_input() {
+    let err = Positive::from_str("not a number").unwrap_err();
+    assert!(matches!(err, PositiveError::InvalidValue { .. }));
+    match &err {
+        PositiveError::InvalidValue { value, .. } => assert_eq!(value, "not a number"),
+        other => panic!("expected InvalidValue, got {other:?}"),
+    }
+    assert!(err.to_string().contains("not a number"));
+}
+
+#[test]
+fn test_from_str_negative_returns_out_of_bounds() {
+    let err = Positive::from_str("-1.5").unwrap_err();
+    assert!(matches!(err, PositiveError::OutOfBounds { .. }));
+}
+
+/// The parse error must survive as a typed value, so callers can match on it
+/// instead of string-matching a `String` error.
+#[test]
+fn test_from_str_error_type_is_positive_error() {
+    fn parse(s: &str) -> Result<Positive, PositiveError> {
+        Positive::from_str(s)
+    }
+    assert!(parse("2.5").is_ok());
+    assert!(parse("").is_err());
+}
+
+/// `OutOfBounds` must carry exact `Decimal`s. A value below `f64`'s subnormal
+/// range still has to round-trip through the error untouched.
+#[test]
+fn test_out_of_bounds_preserves_exact_decimal_value() {
+    let tiny_negative = Decimal::new(-1, 28);
+    let err = Positive::new_decimal(tiny_negative).unwrap_err();
+    match err {
+        PositiveError::OutOfBounds { value, .. } => assert_eq!(value, tiny_negative),
+        other => panic!("expected OutOfBounds, got {other:?}"),
+    }
+}
+
+/// Large magnitudes must not be projected through `f64`, which would round
+/// `Decimal::MIN` and lose the last digits.
+#[test]
+fn test_out_of_bounds_preserves_decimal_min_exactly() {
+    let err = Positive::new_decimal(Decimal::MIN).unwrap_err();
+    match err {
+        PositiveError::OutOfBounds { value, max, .. } => {
+            assert_eq!(value, Decimal::MIN);
+            assert_eq!(max, Decimal::MAX);
+        }
+        other => panic!("expected OutOfBounds, got {other:?}"),
+    }
+}
+
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_out_of_bounds_min_is_zero_by_default() {
+    let err = Positive::new_decimal(Decimal::NEGATIVE_ONE).unwrap_err();
+    match err {
+        PositiveError::OutOfBounds { min, .. } => assert_eq!(min, Decimal::ZERO),
+        other => panic!("expected OutOfBounds, got {other:?}"),
+    }
+}
+
+/// Under `non-zero` the smallest permitted value is `1e-28` — the smallest
+/// strictly positive `Decimal` — not `f64::MIN_POSITIVE`.
+#[cfg(feature = "non-zero")]
+#[test]
+fn test_out_of_bounds_min_is_smallest_decimal_under_non_zero() {
+    let err = Positive::new_decimal(Decimal::ZERO).unwrap_err();
+    match err {
+        PositiveError::OutOfBounds { min, .. } => {
+            assert_eq!(min, Decimal::new(1, 28));
+            assert!(Positive::new_decimal(min).is_ok());
+        }
+        other => panic!("expected OutOfBounds, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_new_nan_is_invalid_value() {
+    let err = Positive::new(f64::NAN).unwrap_err();
+    assert!(matches!(err, PositiveError::InvalidValue { .. }));
+}
+
+#[test]
+fn test_new_infinity_is_invalid_value() {
+    let err = Positive::new(f64::INFINITY).unwrap_err();
+    assert!(matches!(err, PositiveError::InvalidValue { .. }));
+    let err = Positive::new(f64::NEG_INFINITY).unwrap_err();
+    assert!(matches!(err, PositiveError::InvalidValue { .. }));
+}
+
+/// Every public error message must be lowercase-initial so it composes when a
+/// caller wraps it in their own error type.
+#[test]
+fn test_error_messages_are_lowercase_initial() {
+    let errors = [
+        Positive::new(f64::NAN).unwrap_err(),
+        Positive::new_decimal(Decimal::NEGATIVE_ONE).unwrap_err(),
+        Positive::from_str("nope").unwrap_err(),
+        pos_or_panic!(5.0).checked_div_f64(0.0).unwrap_err(),
+        pos_or_panic!(5.0).checked_add_f64(f64::NAN).unwrap_err(),
+    ];
+    for error in &errors {
+        let rendered = error.to_string();
+        let first = rendered.chars().next().expect("message must not be empty");
+        assert!(
+            first.is_lowercase(),
+            "message does not start lowercase: {rendered}"
+        );
+    }
+}
+
+/// The variant set is exhaustive: this compiles without a wildcard arm, which
+/// is the property removing the `Other` catch-all was meant to restore.
+#[test]
+fn test_error_variants_are_exhaustively_matchable() {
+    fn describe(error: &PositiveError) -> &'static str {
+        match error {
+            PositiveError::InvalidValue { .. } => "invalid-value",
+            PositiveError::ArithmeticError { .. } => "arithmetic",
+            PositiveError::ConversionError { .. } => "conversion",
+            PositiveError::OutOfBounds { .. } => "out-of-bounds",
+            PositiveError::InvalidPrecision { .. } => "invalid-precision",
+        }
+    }
+    assert_eq!(
+        describe(&Positive::new(f64::NAN).unwrap_err()),
+        "invalid-value"
+    );
+    assert_eq!(
+        describe(&Positive::new_decimal(Decimal::NEGATIVE_ONE).unwrap_err()),
+        "out-of-bounds"
+    );
 }
