@@ -14,6 +14,7 @@ use rust_decimal::{Decimal, MathematicalOps, RoundingStrategy};
 use rust_decimal_macros::dec;
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::borrow::Borrow;
 use std::cmp::{Ordering, PartialEq};
 use std::fmt;
 use std::fmt::Display;
@@ -1119,6 +1120,61 @@ impl Positive {
         Positive::new_decimal(dec_rem(self.0, rhs.0, "remainder")?)
     }
 
+    /// Sums an iterator of `Positive` values without ever panicking.
+    ///
+    /// This is the aggregation counterpart of [`Positive::checked_add`], and
+    /// the non-panicking alternative to the [`Sum`](std::iter::Sum)
+    /// implementation. `Sum` cannot return a `Result`, so a fold that
+    /// overflows has nowhere to report it; this function does.
+    ///
+    /// Accepts both owned and borrowed iterators — anything whose item
+    /// `Borrow`s a `Positive` — so `values.iter()` and `values.into_iter()`
+    /// both work.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ArithmeticError`] as soon as the running total
+    /// overflows `Decimal`, without consuming the rest of the iterator.
+    ///
+    /// Returns [`PositiveError::OutOfBounds`] when the total breaks the
+    /// positivity invariant. Under the `non-zero` feature this includes the
+    /// empty iterator, whose sum is zero: there is no valid `Positive`
+    /// identity element, so an empty sum has no answer and is reported rather
+    /// than invented.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{Positive, PositiveError, pos_or_panic};
+    /// use rust_decimal::Decimal;
+    ///
+    /// let values = [pos_or_panic!(1.5), pos_or_panic!(2.5), pos_or_panic!(6.0)];
+    ///
+    /// // borrowed
+    /// assert_eq!(Positive::checked_sum(values.iter()).unwrap(), pos_or_panic!(10.0));
+    /// // owned
+    /// assert_eq!(Positive::checked_sum(values).unwrap(), pos_or_panic!(10.0));
+    ///
+    /// // overflow is reported, not panicked
+    /// let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    /// assert!(matches!(
+    ///     Positive::checked_sum([max, Positive::ONE]).unwrap_err(),
+    ///     PositiveError::ArithmeticError { .. }
+    /// ));
+    /// ```
+    #[must_use = "checked aggregation returns a Result; ignoring it silences the overflow error"]
+    pub fn checked_sum<I, T>(iter: I) -> Result<Positive, PositiveError>
+    where
+        I: IntoIterator<Item = T>,
+        T: Borrow<Positive>,
+    {
+        let mut total = Decimal::ZERO;
+        for value in iter {
+            total = dec_add(total, value.borrow().0, "sum")?;
+        }
+        Positive::new_decimal(total)
+    }
+
     /// Checked addition with an `f64`, returning a `Result` instead of panicking.
     ///
     /// # Errors
@@ -2205,18 +2261,46 @@ impl RelativeEq for Positive {
     }
 }
 
+// `Sum` cannot return a `Result`, so it is the one aggregation path that has
+// to fail loudly. Both impls delegate to `Positive::checked_sum` and convert
+// its error into the documented panic. The previous implementation folded with
+// raw `Decimal` addition — which panicked inside rust_decimal on overflow
+// anyway — and then applied `unwrap_or(Positive::ZERO)`, which could never
+// observe that overflow and would have replaced a financial total with zero if
+// it ever had.
+//
+// Without the `non-zero` feature the sum of non-negative values is itself
+// non-negative, so overflow is the only reachable failure.
+
 #[cfg(not(feature = "non-zero"))]
 impl Sum for Positive {
+    /// Sums an iterator of `Positive` values.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the total overflows `Decimal`. Use
+    /// [`Positive::checked_sum`] for the non-panicking form; it reports the
+    /// overflow as a [`PositiveError::ArithmeticError`] instead.
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        let sum = iter.fold(Decimal::ZERO, |acc, x| acc + x.value());
-        Positive::new_decimal(sum).unwrap_or(Positive::ZERO)
+        match Positive::checked_sum(iter) {
+            Ok(total) => total,
+            Err(_) => overflow_panic("sum"),
+        }
     }
 }
 
 #[cfg(not(feature = "non-zero"))]
 impl<'a> Sum<&'a Positive> for Positive {
+    /// Sums an iterator of `&Positive` values.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the total overflows `Decimal`. Use
+    /// [`Positive::checked_sum`] for the non-panicking form.
     fn sum<I: Iterator<Item = &'a Positive>>(iter: I) -> Self {
-        let sum = iter.fold(Decimal::ZERO, |acc, x| acc + x.value());
-        Positive::new_decimal(sum).unwrap_or(Positive::ZERO)
+        match Positive::checked_sum(iter) {
+            Ok(total) => total,
+            Err(_) => overflow_panic("sum"),
+        }
     }
 }

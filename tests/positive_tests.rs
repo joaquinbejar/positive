@@ -2095,3 +2095,110 @@ fn test_round_to_nice_number_below_ten_upholds_invariant() {
         );
     }
 }
+
+// ===== Overflow-safe aggregation (issue #72) =====
+
+#[test]
+fn test_checked_sum_owned_iterator() {
+    let values = [pos_or_panic!(1.5), pos_or_panic!(2.5), pos_or_panic!(6.0)];
+    assert_eq!(Positive::checked_sum(values).unwrap(), pos_or_panic!(10.0));
+}
+
+#[test]
+fn test_checked_sum_borrowed_iterator() {
+    let values = [pos_or_panic!(1.5), pos_or_panic!(2.5), pos_or_panic!(6.0)];
+    assert_eq!(
+        Positive::checked_sum(values.iter()).unwrap(),
+        pos_or_panic!(10.0)
+    );
+    // the slice is still usable, i.e. it really was borrowed
+    assert_eq!(values.len(), 3);
+}
+
+#[test]
+fn test_checked_sum_singleton() {
+    let values = [pos_or_panic!(7.25)];
+    assert_eq!(Positive::checked_sum(values).unwrap(), pos_or_panic!(7.25));
+}
+
+/// The empty sum is zero, which is a valid `Positive` by default and an
+/// invalid one under `non-zero`. It must be reported either way, never
+/// invented.
+#[test]
+fn test_checked_sum_empty() {
+    let values: Vec<Positive> = Vec::new();
+    let result = Positive::checked_sum(values);
+    #[cfg(not(feature = "non-zero"))]
+    assert_eq!(result.unwrap(), Positive::ZERO);
+    #[cfg(feature = "non-zero")]
+    assert!(matches!(
+        result.unwrap_err(),
+        PositiveError::OutOfBounds { .. }
+    ));
+}
+
+/// The case the old `Sum` could not survive: `Decimal::MAX + ONE` panicked
+/// inside rust_decimal before `unwrap_or(ZERO)` could ever run.
+#[test]
+fn test_checked_sum_overflow_is_arithmetic_error_not_panic() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let err = Positive::checked_sum([max, Positive::ONE]).unwrap_err();
+    assert!(matches!(err, PositiveError::ArithmeticError { .. }));
+}
+
+#[test]
+fn test_checked_sum_overflow_mid_iteration() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let err = Positive::checked_sum([Positive::ONE, max, max, max]).unwrap_err();
+    assert!(matches!(err, PositiveError::ArithmeticError { .. }));
+}
+
+#[test]
+fn test_checked_sum_large_iterator() {
+    let values: Vec<Positive> = (1..=1_000).map(|_| Positive::ONE).collect();
+    assert_eq!(
+        Positive::checked_sum(&values).unwrap(),
+        Positive::new_decimal(Decimal::from(1_000u64)).unwrap()
+    );
+}
+
+/// `Sum` must agree with `checked_sum` on every total that has one.
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_sum_trait_matches_checked_sum() {
+    let values = [pos_or_panic!(1.5), pos_or_panic!(2.5), pos_or_panic!(6.0)];
+
+    let owned: Positive = values.into_iter().sum();
+    let borrowed: Positive = values.iter().sum();
+    let checked = Positive::checked_sum(values).unwrap();
+
+    assert_eq!(owned, checked);
+    assert_eq!(borrowed, checked);
+}
+
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_sum_trait_empty_is_zero() {
+    let values: Vec<Positive> = Vec::new();
+    let total: Positive = values.into_iter().sum();
+    assert_eq!(total, Positive::ZERO);
+}
+
+/// `Sum` overflowing must panic with the documented message rather than
+/// silently substituting `ZERO`, which would corrupt a financial total.
+#[cfg(not(feature = "non-zero"))]
+#[test]
+#[should_panic(expected = "Positive arithmetic overflow in sum")]
+fn test_sum_trait_overflow_panics_and_never_returns_zero() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let _total: Positive = [max, Positive::ONE].into_iter().sum();
+}
+
+#[cfg(not(feature = "non-zero"))]
+#[test]
+#[should_panic(expected = "Positive arithmetic overflow in sum")]
+fn test_sum_trait_ref_overflow_panics() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let values = [max, Positive::ONE];
+    let _total: Positive = values.iter().sum();
+}
