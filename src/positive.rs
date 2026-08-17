@@ -1334,11 +1334,33 @@ impl Positive {
         decimal_places: u32,
     ) -> Result<String, PositiveError> {
         let decimal_places = validate_precision(decimal_places)?;
-        Ok(format!(
-            "{:.1$}",
-            self.0.round_dp(decimal_places),
-            decimal_places as usize
-        ))
+        let rounded = self.0.round_dp(decimal_places);
+
+        // The obvious implementation — `format!("{:.n$}", rounded, n)` — routes
+        // through `Decimal`'s own formatter, which writes into a fixed-capacity
+        // buffer sized for a decimal's normal width. Asking for 28 places on a
+        // 29-digit value needs 58 characters and overflows it, panicking with
+        // `CapacityError` inside the dependency: `Positive::MAX` at 28 places
+        // aborted, even though both the value and the precision are valid.
+        //
+        // Padding the exact representation ourselves has no such limit, and
+        // produces identical output for every input the old path survived.
+        let mut text = rounded.to_string();
+        if decimal_places == 0 {
+            return Ok(text);
+        }
+
+        let fractional_len = match text.find('.') {
+            Some(point) => text.len() - point - 1,
+            None => {
+                text.push('.');
+                0
+            }
+        };
+        for _ in fractional_len..decimal_places as usize {
+            text.push('0');
+        }
+        Ok(text)
     }
 
     /// Calculates the exponential function e^x for this value.

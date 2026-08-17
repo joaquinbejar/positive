@@ -87,6 +87,10 @@ publish: readme
 	cargo package
 	cargo publish
 
+# Note: cargo-tarpaulin reports line coverage only — its engines do not
+# instrument branches or conditions, which is why the report shows 0 branches
+# rather than a low number. Boundary behaviour is covered explicitly by
+# tests/boundary_matrix.rs instead of inferred from the line percentage.
 .PHONY: coverage
 coverage:
 	export LOGLEVEL=WARN
