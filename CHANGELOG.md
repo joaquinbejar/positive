@@ -30,8 +30,10 @@ test suite passed throughout, because it used small ordinary values.
   through `f64`, and any integer above `i64::MAX` failed to serialise at
   all.
 - **Comparison is lawful.** `positive == decimal` and `decimal ==
-  positive` could disagree, and comparison panicked at the extremes of
-  `Decimal`'s range.
+  positive` could disagree, comparison panicked at the extremes of
+  `Decimal`'s range, and a finite float below `Decimal`'s smallest step
+  underflowed to zero during conversion, so `Positive::ZERO == 1e-100`
+  was `true`. Such floats are now ordered by sign.
 - **Zero `unsafe`,** enforced by `#![forbid(unsafe_code)]`.
 
 ### Added
