@@ -2,6 +2,11 @@
 name = "positive"
 version = "0.6.0"
 edition = "2024"
+# Minimum supported Rust version for consumers of this library. Verified in CI
+# by building the library at exactly this version. Note that *developing* the
+# crate needs 1.86 or newer, because the criterion dev-dependency requires it —
+# that does not affect anyone depending on `positive`.
+rust-version = "1.85"
 authors = ["Joaquín Béjar García <jb@taunais.com>"]
 description = "A type-safe wrapper for guaranteed positive decimal values"
 license = "MIT"

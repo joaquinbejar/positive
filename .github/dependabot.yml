@@ -1,0 +1,17 @@
+# Keeps the SHA-pinned actions current.
+#
+# Pinning by commit SHA is what makes a workflow reproducible and removes the
+# mutable-tag supply-chain risk, but it also means a pin never moves on its
+# own. Dependabot rewrites the SHA and the accompanying version comment
+# together, so the pins stay both fixed and fresh — which is the "update
+# tooling" half of pinning them in the first place.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'ci'
+    labels:
+      - dependencies
