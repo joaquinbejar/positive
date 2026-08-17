@@ -25,7 +25,7 @@
 //! - **Predefined Constants**: Common numeric values (0-10, multiples of 5/100/1000, PI, E, etc.)
 //! - **Convenient Macros**: `pos!`, `pos_or_panic!`, `spos!` for easy value creation
 //! - **Prelude Module**: Simple imports with `use positive::prelude::*;`
-//! - **Serde Support**: Full serialization/deserialization support for JSON and other formats
+//! - **Serde Support**: Lossless serialisation as exact decimal strings, for JSON and binary formats alike
 //! - **Approx Support**: Approximate equality comparisons for floating-point tolerance
 //! - **Checked Operations**: Safe arithmetic operations that return `Result` instead of panicking
 //! - **Optional utoipa Integration**: OpenAPI schema generation support via feature flag
@@ -246,15 +246,46 @@
 //!
 //! ## Serialization
 //!
-//! `Positive` implements `Serialize` and `Deserialize`:
+//! `Positive` serialises as the **exact decimal string**, so every value the
+//! type can hold round-trips without losing a digit:
 //!
 //! ```rust
-//! use positive::pos_or_panic;
+//! use positive::{Positive, pos_or_panic};
+//! use rust_decimal::Decimal;
+//! use std::str::FromStr;
 //!
 //! let p = pos_or_panic!(42.5);
-//! let json = serde_json::to_string(&p).unwrap();  // "42.5"
-//! let parsed: positive::Positive = serde_json::from_str(&json).unwrap();
+//! let json = serde_json::to_string(&p).unwrap();      // "\"42.5\""
+//! let parsed: Positive = serde_json::from_str(&json).unwrap();
+//! assert_eq!(parsed, p);
+//!
+//! // Full 28-digit precision survives the round trip
+//! let exact = Decimal::from_str("0.1234567890123456789012345678").unwrap();
+//! let value = Positive::new_decimal(exact).unwrap();
+//! let json = serde_json::to_string(&value).unwrap();
+//! let back: Positive = serde_json::from_str(&json).unwrap();
+//! assert_eq!(back.to_dec(), exact);
 //! ```
+//!
+//! ### Precision guarantees
+//!
+//! - **Representation**: a JSON string holding the exact decimal, e.g.
+//!   `"42.5"`, `"79228162514264337593543950335"`.
+//! - **Lossless for every representable value**, including 28-digit fractions,
+//!   integers above `i64::MAX`, and `Positive::MAX`.
+//! - **Validation on the way in**: the positivity invariant is enforced on
+//!   deserialisation, so the `non-zero` feature rejects zero there too.
+//! - **Non-self-describing formats** (bincode, postcard) are supported: the
+//!   implementation asks for a string rather than relying on
+//!   `deserialize_any`, which such formats cannot provide.
+//! - **Backward compatibility**: plain JSON numbers written by 0.5.x still
+//!   deserialise. They are lossy by construction — that precision was gone
+//!   before the bytes were written — so re-serialising upgrades them to the
+//!   exact form.
+//!
+//! A JSON *number* cannot carry this precision: nearly every consumer parses
+//! one into an `f64`, which holds about 15 significant digits. That is why the
+//! wire format is a string, and why `rust_decimal` itself uses one.
 //!
 //! ## Use Cases
 //!

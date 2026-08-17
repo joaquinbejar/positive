@@ -337,7 +337,8 @@ fn test_spos_macro() {
 fn test_positive_serialization() {
     let value = pos_or_panic!(42.5);
     let serialized = serde_json::to_string(&value).unwrap();
-    assert_eq!(serialized, "42.5");
+    // Exact decimal string: a JSON number cannot carry Decimal's precision.
+    assert_eq!(serialized, "\"42.5\"");
 }
 
 #[test]
@@ -351,7 +352,7 @@ fn test_positive_deserialization() {
 fn test_positive_serialization_whole_number() {
     let value = pos_or_panic!(100.0);
     let serialized = serde_json::to_string(&value).unwrap();
-    assert_eq!(serialized, "100");
+    assert_eq!(serialized, "\"100\"");
 }
 
 #[test]
@@ -929,19 +930,15 @@ fn test_debug_integer() {
     assert_eq!(s, "42");
 }
 
-/// The `f64::MAX` sentinel is gone. Serialising `Positive::MAX` now reports an
-/// error instead of emitting a number roughly 10^279 times larger than the
-/// value held — wrong data replaced by an honest failure.
-///
-/// The remaining failure is the scale-0 `to_i64` path, which issue #75 (next
-/// but one in this stack) replaces with a lossless wire format.
+/// The `f64::MAX` sentinel is gone (#76), and since #75 `Positive::MAX`
+/// serialises losslessly rather than failing on the scale-0 `to_i64` path.
 #[test]
 fn test_serialize_max_no_longer_emits_the_f64_sentinel() {
-    let result = serde_json::to_string(&Positive::MAX);
-    match result {
-        Ok(json) => assert!(!json.contains("1.7976931348623157e+308")),
-        Err(error) => assert!(error.to_string().contains("i64")),
-    }
+    let json = serde_json::to_string(&Positive::MAX).unwrap();
+    assert!(!json.contains("1.7976931348623157e+308"));
+    assert_eq!(json, "\"79228162514264337593543950335\"");
+    let back: Positive = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, Positive::MAX);
 }
 
 /// Values that do fit the current wire format must serialise as themselves.
@@ -949,7 +946,7 @@ fn test_serialize_max_no_longer_emits_the_f64_sentinel() {
 fn test_serialize_large_value_within_i64_has_no_sentinel() {
     let value = Positive::new_decimal(Decimal::from(i64::MAX)).unwrap();
     let json = serde_json::to_string(&value).unwrap();
-    assert_eq!(json, "9223372036854775807");
+    assert_eq!(json, "\"9223372036854775807\"");
     assert!(!json.contains("1.7976931348623157e+308"));
 }
 
@@ -2981,4 +2978,142 @@ fn test_max_round_trips_through_decimal() {
     let round_tripped = Positive::new_decimal(Positive::MAX.to_dec()).unwrap();
     assert_eq!(round_tripped, Positive::MAX);
     assert_eq!(round_tripped.to_dec(), Decimal::MAX);
+}
+
+// ===== Lossless serde wire format (issue #75) =====
+
+/// The headline loss: 28 significant digits went through `f64` and came back
+/// with 12 of them gone.
+#[test]
+fn test_serde_round_trips_full_28_digit_precision() {
+    let exact = Decimal::from_str("0.1234567890123456789012345678").unwrap();
+    let value = Positive::new_decimal(exact).unwrap();
+
+    let json = serde_json::to_string(&value).unwrap();
+    assert_eq!(json, "\"0.1234567890123456789012345678\"");
+
+    let back: Positive = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.to_dec(), exact, "precision lost in the round trip");
+}
+
+/// `9223372036854775808` is a valid `Positive`, but serialisation used to fail
+/// outright with "Failed to convert to i64".
+#[test]
+fn test_serde_round_trips_integers_above_i64_max() {
+    let above = Decimal::from(i64::MAX as u64 + 1);
+    let value = Positive::new_decimal(above).unwrap();
+
+    let json = serde_json::to_string(&value).unwrap();
+    assert_eq!(json, "\"9223372036854775808\"");
+
+    let back: Positive = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.to_dec(), above);
+}
+
+/// Every representable `Positive` must have a lossless path, including both
+/// extremes of the range.
+#[test]
+fn test_every_representable_value_round_trips_exactly() {
+    let cases = [
+        Decimal::MAX,
+        Decimal::new(1, 28),
+        Decimal::from(u64::MAX),
+        Decimal::from_str("0.1234567890123456789012345678").unwrap(),
+        Decimal::from_str("12345.6789").unwrap(),
+        Decimal::ONE,
+    ];
+    for exact in cases {
+        let Ok(value) = Positive::new_decimal(exact) else {
+            continue; // zero under non-zero
+        };
+        let json = serde_json::to_string(&value).unwrap();
+        let back: Positive = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.to_dec(), exact, "{exact} did not round-trip exactly");
+    }
+}
+
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_zero_round_trips_by_default() {
+    let json = serde_json::to_string(&Positive::ZERO).unwrap();
+    let back: Positive = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, Positive::ZERO);
+}
+
+/// Documents written by 0.5.x stored plain JSON numbers. They must keep
+/// loading, lossily but successfully, since the precision was already gone
+/// before the bytes reached us.
+#[test]
+fn test_legacy_numeric_json_still_deserializes() {
+    let from_integer: Positive = serde_json::from_str("42").unwrap();
+    assert_eq!(from_integer, pos_or_panic!(42.0));
+
+    let from_float: Positive = serde_json::from_str("42.5").unwrap();
+    assert_eq!(from_float, pos_or_panic!(42.5));
+}
+
+/// Validation is still enforced on the way in, in both feature modes and for
+/// both input shapes.
+#[test]
+fn test_deserialize_still_validates_the_invariant() {
+    assert!(serde_json::from_str::<Positive>("\"-1\"").is_err());
+    assert!(serde_json::from_str::<Positive>("-1").is_err());
+    assert!(serde_json::from_str::<Positive>("\"not a decimal\"").is_err());
+}
+
+#[cfg(feature = "non-zero")]
+#[test]
+fn test_deserialize_rejects_zero_under_non_zero() {
+    assert!(serde_json::from_str::<Positive>("\"0\"").is_err());
+    assert!(serde_json::from_str::<Positive>("0").is_err());
+}
+
+/// The format must not depend on `deserialize_any`, which non-self-describing
+/// serializers cannot support. `StrDeserializer` calls exactly the method the
+/// implementation requests, standing in for such a format without adding a
+/// dependency.
+#[test]
+fn test_deserializes_from_a_non_self_describing_driver() {
+    use serde::Deserialize;
+    use serde::de::IntoDeserializer;
+    use serde::de::value::{Error as ValueError, StrDeserializer};
+
+    let driver: StrDeserializer<ValueError> = "0.1234567890123456789012345678".into_deserializer();
+    let value = Positive::deserialize(driver).unwrap();
+    assert_eq!(
+        value.to_dec(),
+        Decimal::from_str("0.1234567890123456789012345678").unwrap()
+    );
+
+    let driver: StrDeserializer<ValueError> = "-1".into_deserializer();
+    assert!(Positive::deserialize(driver).is_err());
+}
+
+/// A serializer that is not human-readable must receive a string, which is
+/// what the `deserialize_str` path above expects.
+#[test]
+fn test_serializes_as_a_string_for_binary_formats() {
+    // serde_json is human-readable; its output is the canonical string form.
+    let value = Positive::new_decimal(Decimal::MAX).unwrap();
+    let json = serde_json::to_string(&value).unwrap();
+    assert!(json.starts_with('"') && json.ends_with('"'));
+}
+
+/// Struct fields round-trip too, which is how the type is actually used.
+#[test]
+fn test_round_trip_inside_a_struct() {
+    #[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+    struct Order {
+        price: Positive,
+        quantity: Positive,
+    }
+
+    let order = Order {
+        price: Positive::new_decimal(Decimal::from_str("12345.678901234567890123").unwrap())
+            .unwrap(),
+        quantity: pos_or_panic!(3.0),
+    };
+    let json = serde_json::to_string(&order).unwrap();
+    let back: Order = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, order);
 }

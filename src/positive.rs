@@ -2519,40 +2519,58 @@ impl PartialEq<Decimal> for Positive {
     }
 }
 
-// NOTE (#26): `#[serde(transparent)]` would delegate to `Decimal`'s
-// default `Serialize`/`Deserialize`, which emits a JSON string (e.g.
-// `"12.345"`). The manual impls below preserve a long-standing,
-// downstream-visible JSON contract:
-//   - integer-valued `Positive`s serialise as JSON integers (`42`).
-//   - fractional `Positive`s serialise as JSON numbers (`12.345`).
-// The `f64::MAX` sentinel for `Positive::INFINITY` was removed in #76: it
-// reported a number roughly 10^279 times larger than the value held, and it
-// round-tripped a value that `Positive::new(f64::MAX)` rejects.
-// Switching to `#[serde(transparent)]` would change the wire format
-// and is therefore deferred. Duplicated validation inside the
-// deserialiser is removed separately in #27.
+// Wire format (#75).
+//
+// `Positive` serialises as the **exact decimal string** produced by
+// `Decimal`'s own `Serialize`, e.g. `"12.345"`, `"42"`,
+// `"0.1234567890123456789012345678"`.
+//
+// The previous format converted every fractional value through `f64` and every
+// scale-zero value through `i64`. Both are lossy or outright failing for
+// values this crate is built to carry:
+//
+//   - `0.1234567890123456789012345678` serialised as `0.12345678901234569` and
+//     came back as `0.1234567890123457` — 12 digits lost by a crate whose
+//     whole point is 28-digit precision;
+//   - `9223372036854775808` is a perfectly valid `Positive` but serialisation
+//     failed outright with "Failed to convert to i64";
+//   - `Decimal::MAX` could not be serialised at all.
+//
+// A JSON *number* cannot carry this precision: almost every consumer parses it
+// into an f64. A string can, in every format, which is why `Decimal` itself
+// uses one. Deserialisation still accepts JSON numbers so documents written by
+// 0.5.x keep loading, but those are lossy by construction — the precision was
+// already gone before the bytes reached us.
+//
+// Using `deserialize_str` rather than `deserialize_any` also means the format
+// works with non-self-describing serializers, which `deserialize_any` cannot
+// support.
 impl Serialize for Positive {
+    /// Serialises the exact decimal representation as a string.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the serializer. The conversion itself cannot
+    /// fail: every `Positive` has an exact decimal representation.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        if self.0.scale() == 0 {
-            serializer.serialize_i64(
-                self.0
-                    .to_i64()
-                    .ok_or_else(|| serde::ser::Error::custom("Failed to convert to i64"))?,
-            )
-        } else {
-            serializer.serialize_f64(
-                self.0
-                    .to_f64()
-                    .ok_or_else(|| serde::ser::Error::custom("Failed to convert to f64"))?,
-            )
-        }
+        // Disambiguated: `Decimal` also has an inherent `serialize()` that
+        // returns its 16-byte representation.
+        Serialize::serialize(&self.0, serializer)
     }
 }
 
 impl<'de> Deserialize<'de> for Positive {
+    /// Deserialises from the exact decimal string, or from a JSON number for
+    /// compatibility with documents written by 0.5.x.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the input is not a valid decimal, or when the value breaks
+    /// the positivity invariant — which under the `non-zero` feature includes
+    /// zero.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -2563,16 +2581,17 @@ impl<'de> Deserialize<'de> for Positive {
             type Value = Positive;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a positive number")
+                formatter.write_str("a positive decimal, as a string or a number")
             }
 
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Err(serde::de::Error::custom(format!(
-                    "Invalid string: '{value}'. Expected a positive number."
-                )))
+                let decimal = Decimal::from_str_exact(value).map_err(|error| {
+                    serde::de::Error::custom(format!("invalid decimal string '{value}': {error}"))
+                })?;
+                Positive::new_decimal(decimal).map_err(serde::de::Error::custom)
             }
 
             fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
@@ -2593,16 +2612,32 @@ impl<'de> Deserialize<'de> for Positive {
             where
                 E: serde::de::Error,
             {
-                // No sentinel: an infinite or out-of-range float is not a
-                // representable Positive and is reported as such, rather than
-                // being silently mapped onto Decimal::MAX.
-                let decimal = Decimal::from_f64(value)
-                    .ok_or_else(|| serde::de::Error::custom("Failed to convert f64 to Decimal"))?;
+                // Legacy numeric input only. The precision was already lost
+                // before these bytes reached us; nothing here can recover it.
+                let decimal = Decimal::from_f64(value).ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "number {value} is not representable as a decimal"
+                    ))
+                })?;
                 Positive::new_decimal(decimal).map_err(serde::de::Error::custom)
             }
         }
 
-        deserializer.deserialize_any(PositiveVisitor)
+        // Human-readable formats (JSON, YAML, TOML) are self-describing, so
+        // `deserialize_any` can dispatch on the token that is actually there.
+        // That is what keeps documents written by 0.5.x — which stored plain
+        // JSON numbers — loading.
+        //
+        // Non-self-describing formats (bincode, postcard) cannot support
+        // `deserialize_any` at all; they need to be told which type to read.
+        // Since serialisation always emits a string, `deserialize_str` is the
+        // matching request. Choosing between the two per format is what makes
+        // the contract work in both worlds, rather than sacrificing one.
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_any(PositiveVisitor)
+        } else {
+            deserializer.deserialize_str(PositiveVisitor)
+        }
     }
 }
 
