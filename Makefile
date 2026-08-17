@@ -40,6 +40,32 @@ lint:
 lint-fix: 
 	cargo clippy --fix --all-targets --all-features --allow-dirty --allow-staged --workspace -- -D warnings
 
+# Strict public-API lints from rules/global_rules.md, beyond the default
+# clippy set: every public item documented, every Result API with an Errors
+# section, every panicking API with a Panics section, and #[must_use] where the
+# rules require it. Run under each feature configuration, since cfg-gated items
+# are only visible in their own.
+.PHONY: lint-strict
+lint-strict:
+	cargo clippy --all-targets --all-features -- \
+		-D warnings \
+		-D clippy::must_use_candidate \
+		-D clippy::missing_errors_doc \
+		-D clippy::missing_panics_doc \
+		-D missing_docs
+	cargo clippy --all-targets --no-default-features -- \
+		-D warnings \
+		-D clippy::must_use_candidate \
+		-D clippy::missing_errors_doc \
+		-D clippy::missing_panics_doc \
+		-D missing_docs
+	cargo clippy --all-targets --features non-zero -- \
+		-D warnings \
+		-D clippy::must_use_candidate \
+		-D clippy::missing_errors_doc \
+		-D clippy::missing_panics_doc \
+		-D missing_docs
+
 # Clean the project
 .PHONY: clean
 clean:

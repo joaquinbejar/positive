@@ -62,29 +62,51 @@ positive = { version = "0.4", features = ["utoipa"] }
 
 ### Quick Start
 
+The recommended pattern is fallible construction and checked arithmetic,
+propagating [`PositiveError`] with `?`. Nothing here can panic:
+
 ```rust
-// Use the prelude for convenient imports
 use positive::prelude::*;
 
-// Create a positive value using the macro (returns Result)
-let price = pos!(100.50).unwrap();
+fn order_total() -> Result<Positive, PositiveError> {
+    let price = Positive::new(100.50)?;
+    let quantity = Positive::new(10.0)?;
+    let discount = Positive::new(5.0)?;
 
-// Or use pos_or_panic! for direct value (panics on invalid input)
-let price = pos_or_panic!(100.50);
+    let subtotal = price.checked_mul(&quantity)?;
+    let after_discount = subtotal.checked_sub(&discount)?;
 
-// Create using the constructor
-let quantity = Positive::new(10.0).unwrap();
+    // Constants are ready-made and cannot fail
+    let tax_rate = FIVE.checked_div(&HUNDRED)?;   // 5%
+    let tax = after_discount.checked_mul(&tax_rate)?;
 
-// Use predefined constants
-let tax_rate = FIVE / HUNDRED;  // 5%
+    after_discount.checked_add(&tax)
+}
 
-// Arithmetic operations
-let total = price * quantity;
-
-// Safe operations that return Result
-let discount = pos_or_panic!(5.0);
-let final_price = price.checked_sub(&discount).unwrap();
+assert!(order_total().is_ok());
 ```
+
+The operators (`+`, `-`, `*`, `/`) are available too and read more
+naturally, at the cost of panicking on overflow or on a result that would
+break the invariant. Every one of them has a `checked_` counterpart, listed
+in its `# Panics` section, so the panicking form is always an opt-in:
+
+```rust
+use positive::prelude::*;
+
+let price = Positive::new(100.50)?;
+let quantity = Positive::new(10.0)?;
+let total = price * quantity;          // panics on overflow
+let total = price.checked_mul(&quantity)?;  // returns Err instead
+```
+
+#### A note on the examples below
+
+The remaining examples use [`pos_or_panic!`] for brevity, so each one fits
+in a line or two. That macro panics on invalid input and is intended for
+tests, examples and constant literals — **not** for production paths that
+handle external input. There, use [`Positive::new`], [`pos!`] or [`spos!`]
+and handle the failure.
 
 ### API Overview
 
