@@ -84,7 +84,7 @@ jobs:
           --all-targets --all-features --workspace --timeout 0 --out Xml
 
       - name: Upload coverage reports to Codecov.io
-        # codecov/codecov-action v5
+        # codecov/codecov-action v5.5.5
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           fail_ci_if_error: true
