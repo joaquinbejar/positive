@@ -292,6 +292,14 @@ pub(crate) fn domain_panic(op: &'static str) -> ! {
     panic!("Positive domain error in {op}: value is outside the operation's domain")
 }
 
+/// Panics with a uniform message when a value cannot be represented in the
+/// destination primitive type.
+#[cold]
+#[inline(never)]
+pub(crate) fn conversion_panic(target: &'static str) -> ! {
+    panic!("Positive conversion to {target} failed: value is out of range")
+}
+
 /// Builds a `Positive` from the result of an arithmetic or mathematical
 /// operation, validating the feature-dependent invariant first.
 ///
@@ -549,83 +557,146 @@ impl Positive {
 
     /// Converts the value to a 64-bit floating-point number.
     ///
-    /// # Panics
+    /// This conversion is **infallible**. `rust_decimal` implements
+    /// `Decimal::to_f64` as `Some(self.as_f64())`, and `as_f64` always
+    /// produces a value; calling `as_f64` directly encodes that fact in the
+    /// signature instead of asserting it at runtime with an `expect`, which is
+    /// what earlier versions did.
     ///
-    /// This method will panic if the conversion fails. Use `to_f64_checked()`
-    /// or `to_f64_lossy()` for non-panicking alternatives.
+    /// It is still **lossy**: `f64` carries about 15 significant digits, so
+    /// magnitudes beyond `2^53` and fractions beyond that precision are
+    /// rounded. Use [`Positive::to_dec`] when precision matters.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(2.5).to_f64(), 2.5);
+    /// ```
+    #[inline]
     #[must_use]
     pub fn to_f64(&self) -> f64 {
-        self.0
-            .to_f64()
-            .expect("Decimal to f64 conversion failed - value out of range")
+        self.0.as_f64()
     }
 
     /// Converts the value to f64, returning None if conversion fails.
+    ///
+    /// Retained for source compatibility; it always returns `Some`, because
+    /// the conversion cannot fail. Prefer [`Positive::to_f64`].
     #[inline]
     #[must_use]
     pub fn to_f64_checked(&self) -> Option<f64> {
-        self.0.to_f64()
+        Some(self.to_f64())
     }
 
     /// Converts the value to f64 with lossy conversion (returns 0.0 on failure).
+    ///
+    /// # Deprecated
+    ///
+    /// There is no failure case to fall back from: [`Positive::to_f64`] is
+    /// infallible and returns the same value.
+    #[deprecated(
+        since = "0.6.0",
+        note = "`to_f64` is infallible and returns the same value; this alias will be removed after 0.6.0"
+    )]
     #[inline]
     #[must_use]
     pub fn to_f64_lossy(&self) -> f64 {
-        self.0.to_f64().unwrap_or(0.0)
+        self.to_f64()
     }
 
-    /// Converts the value to a 64-bit signed integer.
+    /// Converts the value to a 64-bit signed integer, truncating any fraction.
+    ///
+    /// # Deprecated
+    ///
+    /// This method panics for values that are perfectly valid `Positive`s but
+    /// exceed `i64::MAX`. Use `i64::try_from(positive)` for a typed error, or
+    /// [`Positive::to_i64_checked`] for an `Option`.
     ///
     /// # Panics
     ///
-    /// This method will panic if the conversion fails. Use `to_i64_checked()`
-    /// for a non-panicking alternative.
+    /// Panics when the truncated value does not fit in an `i64`.
+    #[deprecated(
+        since = "0.6.0",
+        note = "panics for valid values above i64::MAX; use `i64::try_from(value)` or `to_i64_checked`"
+    )]
     #[must_use]
     pub fn to_i64(&self) -> i64 {
-        self.0
-            .to_i64()
-            .expect("Decimal to i64 conversion failed - value out of range")
+        match self.0.to_i64() {
+            Some(value) => value,
+            None => conversion_panic("i64"),
+        }
     }
 
-    /// Converts the value to i64, returning None if conversion fails.
+    /// Converts the value to i64, returning None if it does not fit.
+    ///
+    /// Any fraction is truncated toward zero.
+    #[inline]
     #[must_use]
     pub fn to_i64_checked(&self) -> Option<i64> {
         self.0.to_i64()
     }
 
-    /// Converts the inner value to a `u64`.
+    /// Converts the inner value to a `u64`, truncating any fraction.
+    ///
+    /// # Deprecated
+    ///
+    /// This method panics for values that are perfectly valid `Positive`s but
+    /// exceed `u64::MAX`. Use `u64::try_from(positive)` for a typed error, or
+    /// [`Positive::to_u64_checked`] for an `Option`.
     ///
     /// # Panics
     ///
-    /// This method will panic if the conversion fails. Use `to_u64_checked()`
-    /// for a non-panicking alternative.
+    /// Panics when the truncated value does not fit in a `u64`.
+    #[deprecated(
+        since = "0.6.0",
+        note = "panics for valid values above u64::MAX; use `u64::try_from(value)` or `to_u64_checked`"
+    )]
     #[must_use]
     pub fn to_u64(&self) -> u64 {
-        self.0
-            .to_u64()
-            .expect("Decimal to u64 conversion failed - value out of range")
+        match self.0.to_u64() {
+            Some(value) => value,
+            None => conversion_panic("u64"),
+        }
     }
 
-    /// Converts the value to u64, returning None if conversion fails.
+    /// Converts the value to u64, returning None if it does not fit.
+    ///
+    /// Any fraction is truncated toward zero.
+    #[inline]
     #[must_use]
     pub fn to_u64_checked(&self) -> Option<u64> {
         self.0.to_u64()
     }
 
-    /// Converts the value to a usize.
+    /// Converts the value to a usize, truncating any fraction.
+    ///
+    /// # Deprecated
+    ///
+    /// This method panics for values that are perfectly valid `Positive`s but
+    /// exceed `usize::MAX`. Use `usize::try_from(positive)` for a typed error,
+    /// or [`Positive::to_usize_checked`] for an `Option`.
     ///
     /// # Panics
     ///
-    /// This method will panic if the conversion fails. Use `to_usize_checked()`
-    /// for a non-panicking alternative.
+    /// Panics when the truncated value does not fit in a `usize`.
+    #[deprecated(
+        since = "0.6.0",
+        note = "panics for valid values above usize::MAX; use `usize::try_from(value)` or `to_usize_checked`"
+    )]
     #[must_use]
     pub fn to_usize(&self) -> usize {
-        self.0
-            .to_usize()
-            .expect("Decimal to usize conversion failed - value out of range")
+        match self.0.to_usize() {
+            Some(value) => value,
+            None => conversion_panic("usize"),
+        }
     }
 
-    /// Converts the value to usize, returning None if conversion fails.
+    /// Converts the value to usize, returning None if it does not fit.
+    ///
+    /// Any fraction is truncated toward zero.
+    #[inline]
     #[must_use]
     pub fn to_usize_checked(&self) -> Option<usize> {
         self.0.to_usize()
@@ -1996,36 +2067,80 @@ impl PartialEq<&Positive> for Positive {
     }
 }
 
-impl From<Positive> for u64 {
+impl TryFrom<Positive> for u64 {
+    type Error = PositiveError;
+
+    /// Converts a `Positive` to a `u64`, truncating any fraction toward zero.
+    ///
+    /// Replaces the previous `From<Positive> for u64`, which returned `0` when
+    /// the value did not fit — conflating failure with a valid result.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ConversionError`] when the truncated value
+    /// exceeds `u64::MAX`.
     #[inline]
-    fn from(pos_u64: Positive) -> Self {
-        pos_u64.0.to_u64().unwrap_or(0)
+    fn try_from(value: Positive) -> Result<Self, Self::Error> {
+        value.0.to_u64().ok_or_else(|| {
+            PositiveError::conversion_error("Positive", "u64", "value exceeds u64::MAX")
+        })
+    }
+}
+
+impl TryFrom<Positive> for i64 {
+    type Error = PositiveError;
+
+    /// Converts a `Positive` to an `i64`, truncating any fraction toward zero.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ConversionError`] when the truncated value
+    /// exceeds `i64::MAX`.
+    #[inline]
+    fn try_from(value: Positive) -> Result<Self, Self::Error> {
+        value.0.to_i64().ok_or_else(|| {
+            PositiveError::conversion_error("Positive", "i64", "value exceeds i64::MAX")
+        })
     }
 }
 
 impl From<&Positive> for f64 {
+    /// Infallible, but lossy beyond `f64`'s ~15 significant digits. See
+    /// [`Positive::to_f64`].
     #[inline]
     fn from(value: &Positive) -> Self {
-        value.0.to_f64().unwrap_or(0.0)
+        value.to_f64()
     }
 }
 
 impl From<Positive> for f64 {
+    /// Infallible, but lossy beyond `f64`'s ~15 significant digits. See
+    /// [`Positive::to_f64`].
     #[inline]
     fn from(value: Positive) -> Self {
-        value.0.to_f64().unwrap_or(0.0)
+        value.to_f64()
     }
 }
 
-impl From<Positive> for usize {
-    /// Converts the underlying `Decimal` to `usize` via `to_u64`.
+impl TryFrom<Positive> for usize {
+    type Error = PositiveError;
+
+    /// Converts a `Positive` to a `usize`, truncating any fraction toward
+    /// zero.
     ///
-    /// Returns `0` on overflow or when the value is not representable as
-    /// `u64`. For fallible, non-lossy conversion callers should prefer
-    /// matching on `Positive::to_u64_checked()`.
+    /// Replaces the previous `From<Positive> for usize`, which went through
+    /// `to_u64().unwrap_or(0)` and then cast to `usize` — so it both returned
+    /// `0` for out-of-range values and silently wrapped on 32-bit targets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::ConversionError`] when the truncated value
+    /// does not fit in a `usize` on the target platform.
     #[inline]
-    fn from(value: Positive) -> Self {
-        value.to_dec().to_u64().unwrap_or(0) as usize
+    fn try_from(value: Positive) -> Result<Self, Self::Error> {
+        value.0.to_usize().ok_or_else(|| {
+            PositiveError::conversion_error("Positive", "usize", "value exceeds usize::MAX")
+        })
     }
 }
 
@@ -2145,13 +2260,29 @@ impl TryFrom<f64> for Positive {
 impl TryFrom<usize> for Positive {
     type Error = PositiveError;
 
-    /// Attempts to convert a usize to a Positive value.
+    /// Converts a `usize` to a `Positive` exactly.
+    ///
+    /// The conversion goes straight to `Decimal`. Earlier versions went
+    /// through `f64`, so on 64-bit targets every value above `2^53` was
+    /// rounded — `9_007_199_254_740_993` became `9_007_199_254_740_992`.
     ///
     /// # Errors
     ///
-    /// Returns `PositiveError` if the value cannot be converted to Decimal.
+    /// Returns [`PositiveError::OutOfBounds`] when the value breaks the
+    /// positivity invariant, which under the `non-zero` feature means zero.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::Positive;
+    /// use rust_decimal::Decimal;
+    ///
+    /// let value = 9_007_199_254_740_993usize;
+    /// let positive = Positive::try_from(value).unwrap();
+    /// assert_eq!(positive.to_dec(), Decimal::from(value));
+    /// ```
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Positive::new(value as f64)
+        Positive::new_decimal(Decimal::from(value))
     }
 }
 

@@ -87,7 +87,7 @@ fn main() {
     let p = pos_or_panic!(42.5);
     println!("Positive value: {p}");
     println!("to_f64(): {}", p.to_f64());
-    println!("to_i64(): {}", p.to_i64());
+    println!("to_i64(): {:?}", i64::try_from(p));
     println!("to_dec(): {}", p.to_dec());
 
     // Comparisons

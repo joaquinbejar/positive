@@ -534,7 +534,10 @@ fn test_to_f64_checked() {
 #[test]
 fn test_to_f64_lossy() {
     let value = pos_or_panic!(5.0);
-    assert_eq!(value.to_f64_lossy(), 5.0);
+    #[allow(deprecated)]
+    {
+        assert_eq!(value.to_f64_lossy(), 5.0);
+    }
 }
 
 #[test]
@@ -589,19 +592,28 @@ fn test_to_dec_ref() {
 #[test]
 fn test_to_i64() {
     let value = pos_or_panic!(42.0);
-    assert_eq!(value.to_i64(), 42);
+    #[allow(deprecated)]
+    {
+        assert_eq!(value.to_i64(), 42);
+    }
 }
 
 #[test]
 fn test_to_u64() {
     let value = pos_or_panic!(42.0);
-    assert_eq!(value.to_u64(), 42);
+    #[allow(deprecated)]
+    {
+        assert_eq!(value.to_u64(), 42);
+    }
 }
 
 #[test]
 fn test_to_usize() {
     let value = pos_or_panic!(42.0);
-    assert_eq!(value.to_usize(), 42);
+    #[allow(deprecated)]
+    {
+        assert_eq!(value.to_usize(), 42);
+    }
 }
 
 #[test]
@@ -718,9 +730,9 @@ fn test_partial_eq_positive_ref() {
 }
 
 #[test]
-fn test_from_positive_to_u64() {
+fn test_try_from_positive_to_u64() {
     let p = pos_or_panic!(42.0);
-    let u: u64 = p.into();
+    let u: u64 = u64::try_from(p).unwrap();
     assert_eq!(u, 42);
 }
 
@@ -739,25 +751,26 @@ fn test_from_positive_to_f64() {
 }
 
 #[test]
-fn test_from_positive_to_usize() {
+fn test_try_from_positive_to_usize() {
     let p = pos_or_panic!(42.0);
-    let u: usize = p.into();
+    let u: usize = usize::try_from(p).unwrap();
     assert_eq!(u, 42);
 }
 
 #[test]
-fn test_from_positive_to_usize_truncates_fractional() {
-    // The conversion goes through `to_u64`, which truncates toward zero.
+fn test_try_from_positive_to_usize_truncates_fractional() {
+    // Integer conversions truncate toward zero; this is the documented
+    // contract, not a rounding accident.
     let p = pos_or_panic!(42.9);
-    let u: usize = p.into();
+    let u: usize = usize::try_from(p).unwrap();
     assert_eq!(u, 42);
 }
 
 #[test]
-fn test_from_positive_to_usize_large_value() {
+fn test_try_from_positive_to_usize_large_value() {
     use rust_decimal_macros::dec;
     let p = positive::Positive::new_decimal(dec!(1000000)).expect("valid");
-    let u: usize = p.into();
+    let u: usize = usize::try_from(p).unwrap();
     assert_eq!(u, 1_000_000);
 }
 
@@ -2762,4 +2775,118 @@ fn test_deprecated_is_multiple_edge_cases() {
     // a value outside f64's range reports false instead of panicking
     let max = Positive::new_decimal(Decimal::MAX).unwrap();
     let _ = max.is_multiple(5.0);
+}
+
+// ===== Lossless, non-panicking primitive conversions (issue #74) =====
+
+/// `TryFrom<usize>` converted through `f64`, so on 64-bit targets every value
+/// above 2^53 was rounded.
+#[test]
+fn test_usize_to_positive_is_exact_above_2_53() {
+    let cases: [usize; 5] = [
+        9_007_199_254_740_992, // 2^53
+        9_007_199_254_740_993, // 2^53 + 1 — not representable as f64
+        9_007_199_254_740_991, // 2^53 - 1
+        1,
+        1_000_000,
+    ];
+    for value in cases {
+        let positive = Positive::try_from(value).expect("valid");
+        assert_eq!(
+            positive.to_dec(),
+            Decimal::from(value),
+            "usize {value} did not round-trip exactly"
+        );
+        assert_eq!(usize::try_from(positive).unwrap(), value);
+    }
+}
+
+#[test]
+fn test_usize_max_round_trips_exactly() {
+    let value = usize::MAX;
+    let positive = Positive::try_from(value).expect("valid");
+    assert_eq!(positive.to_dec(), Decimal::from(value));
+    assert_eq!(usize::try_from(positive).unwrap(), value);
+}
+
+/// Out-of-range integer conversions must produce a typed error, never zero.
+#[test]
+fn test_out_of_range_integer_conversions_are_errors_not_zero() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+
+    let err = u64::try_from(max).unwrap_err();
+    assert!(matches!(err, PositiveError::ConversionError { .. }));
+
+    let err = i64::try_from(max).unwrap_err();
+    assert!(matches!(err, PositiveError::ConversionError { .. }));
+
+    let err = usize::try_from(max).unwrap_err();
+    assert!(matches!(err, PositiveError::ConversionError { .. }));
+}
+
+#[test]
+fn test_i64_boundary_conversions() {
+    let at_max = Positive::new_decimal(Decimal::from(i64::MAX)).unwrap();
+    assert_eq!(i64::try_from(at_max).unwrap(), i64::MAX);
+
+    let above_max = Positive::new_decimal(Decimal::from(i64::MAX as u64 + 1)).unwrap();
+    assert!(i64::try_from(above_max).is_err());
+    // ...but it still fits in a u64
+    assert_eq!(u64::try_from(above_max).unwrap(), i64::MAX as u64 + 1);
+}
+
+#[test]
+fn test_u64_boundary_conversions() {
+    let at_max = Positive::new_decimal(Decimal::from(u64::MAX)).unwrap();
+    assert_eq!(u64::try_from(at_max).unwrap(), u64::MAX);
+
+    let above_max = Positive::new_decimal(Decimal::from(u64::MAX) + Decimal::ONE).unwrap();
+    assert!(u64::try_from(above_max).is_err());
+}
+
+/// Fractional values truncate toward zero — the documented contract.
+#[test]
+fn test_fractional_integer_conversions_truncate_toward_zero() {
+    let value = pos_or_panic!(42.9);
+    assert_eq!(u64::try_from(value).unwrap(), 42);
+    assert_eq!(i64::try_from(value).unwrap(), 42);
+    assert_eq!(usize::try_from(value).unwrap(), 42);
+}
+
+/// `to_f64` is infallible; it must not panic for any constructible value.
+#[test]
+fn test_to_f64_is_infallible_at_extremes() {
+    let max = Positive::new_decimal(Decimal::MAX).unwrap();
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    assert!(max.to_f64() > 0.0);
+    assert!(tiny.to_f64() >= 0.0);
+    assert_eq!(max.to_f64_checked(), Some(max.to_f64()));
+    // the From impls are the same conversion and equally infallible
+    let as_float: f64 = max.into();
+    assert_eq!(as_float, max.to_f64());
+    let as_float_ref: f64 = (&max).into();
+    assert_eq!(as_float_ref, max.to_f64());
+}
+
+#[test]
+fn test_integer_round_trip_through_positive() {
+    for value in [1u64, 42, 1_000_000, u64::MAX] {
+        let positive = Positive::try_from(value).expect("valid");
+        assert_eq!(u64::try_from(positive).unwrap(), value);
+    }
+}
+
+#[cfg(feature = "non-zero")]
+#[test]
+fn test_usize_zero_is_rejected_under_non_zero() {
+    assert!(matches!(
+        Positive::try_from(0usize).unwrap_err(),
+        PositiveError::OutOfBounds { .. }
+    ));
+}
+
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_usize_zero_is_accepted_by_default() {
+    assert_eq!(Positive::try_from(0usize).unwrap(), Positive::ZERO);
 }
