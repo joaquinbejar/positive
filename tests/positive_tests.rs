@@ -1958,11 +1958,25 @@ fn test_sub_or_none_cannot_panic_on_overflow() {
     assert_eq!(max.sub_or_none(&Decimal::MIN), None);
 }
 
+/// An overflowing difference is not a negative one: flooring it at zero
+/// would silently corrupt the result, so it panics like the other
+/// non-checked arithmetic wrappers (issue #90 review).
 #[cfg(not(feature = "non-zero"))]
 #[test]
-fn test_sub_or_zero_cannot_panic_on_overflow() {
+#[should_panic(expected = "Positive arithmetic overflow in sub_or_zero")]
+fn test_sub_or_zero_panics_on_overflow_instead_of_flooring() {
     let max = Positive::new_decimal(Decimal::MAX).unwrap();
-    assert_eq!(max.sub_or_zero(&Decimal::MIN), Positive::ZERO);
+    let _ = max.sub_or_zero(&Decimal::MIN);
+}
+
+/// The documented floor still applies to genuine negative-or-equal
+/// differences.
+#[cfg(not(feature = "non-zero"))]
+#[test]
+fn test_sub_or_zero_still_floors_proven_negative_differences() {
+    let one = Positive::ONE;
+    assert_eq!(one.sub_or_zero(&Decimal::ONE), Positive::ZERO);
+    assert_eq!(one.sub_or_zero(&Decimal::MAX), Positive::ZERO);
 }
 
 /// Comparison against `Decimal` must not panic when the operands straddle the

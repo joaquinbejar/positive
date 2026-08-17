@@ -337,35 +337,14 @@ pub(crate) fn conversion_panic(target: &'static str) -> ! {
     panic!("Positive conversion to {target} failed: value is out of range")
 }
 
-/// Builds a `Positive` from the result of an arithmetic or mathematical
-/// operation, validating the feature-dependent invariant first.
-///
-/// This is the single point every `Positive`-returning path that cannot
-/// return a `Result` goes through. Constructing `Positive(value)` directly is
-/// reserved for constructors and constants whose precondition is statically
-/// evident; anywhere a `Decimal` has been through an operation, the result has
-/// to come through here.
-///
-/// Overflow is reported separately, before this point: the `dec_*` kernels
-/// turn it into an `ArithmeticError`, and the operators turn that into
-/// [`overflow_panic`]. This function only decides whether a *representable*
-/// result satisfies the invariant.
-#[inline]
-pub(crate) fn from_result_or_panic(value: Decimal, op: &'static str) -> Positive {
-    if is_valid_positive_value(value) {
-        Positive(value)
-    } else {
-        invariant_panic(op)
-    }
-}
-
 /// Converts a checked result into the panic documented on the non-checked
 /// wrapper, preserving the distinction between an overflow and an invariant
 /// violation.
 ///
-/// Every panicking mathematical method on `Positive` is a thin wrapper over
+/// Every panicking method and operator on `Positive` is a thin wrapper over
 /// its `checked_*` counterpart through this function, so the two can never
-/// disagree about what succeeds.
+/// disagree about what succeeds. It is the single point at which a typed
+/// error becomes a panic.
 #[inline]
 pub(crate) fn unwrap_or_panic(
     result: Result<Positive, PositiveError>,
@@ -374,7 +353,15 @@ pub(crate) fn unwrap_or_panic(
     match result {
         Ok(value) => value,
         Err(PositiveError::OutOfBounds { .. }) => invariant_panic(op),
-        Err(_) => overflow_panic(op),
+        Err(PositiveError::ArithmeticError { .. }) => overflow_panic(op),
+        Err(PositiveError::InvalidPrecision { precision, .. }) => precision_panic(precision),
+        // These two cannot be produced by the checked counterparts of the
+        // panicking wrappers today; the exhaustive match forces a future
+        // variant, or a new error path, to be classified here deliberately
+        // instead of being mislabelled as overflow.
+        Err(
+            error @ (PositiveError::InvalidValue { .. } | PositiveError::ConversionError { .. }),
+        ) => panic!("Positive {op} failed: {error}"),
     }
 }
 
@@ -1566,9 +1553,12 @@ impl Positive {
     /// This method is not available when the `non-zero` feature is enabled
     /// because the result could be zero.
     ///
-    /// Overflow cannot occur: the subtraction is performed with
-    /// [`Decimal::checked_sub`], and an overflowing difference is treated the
-    /// same as a negative one — the floor at zero is returned.
+    /// # Panics
+    ///
+    /// Panics when the subtraction overflows `Decimal` — a strictly positive
+    /// difference too large to represent is an overflow, not a negative one,
+    /// and flooring it at zero would silently corrupt the result. Use
+    /// [`Positive::checked_sub_dec`] for the non-panicking form.
     #[cfg(not(feature = "non-zero"))]
     #[must_use]
     #[deprecated(
@@ -1576,14 +1566,13 @@ impl Positive {
         note = "saturating arithmetic hides underflow and overflow; use `checked_sub` or `checked_sub_dec` and handle the error, or explicitly floor at zero with `new_decimal(self.0.saturating_sub(*other))`. Removal is scheduled for the release after 0.6.0"
     )]
     pub fn sub_or_zero(&self, other: &Decimal) -> Positive {
-        if &self.0 > other {
-            match dec_sub(self.0, *other, "sub_or_zero") {
-                Ok(result) => from_result_or_panic(result, "sub_or_zero"),
-                Err(_) => Positive::ZERO,
-            }
-        } else {
-            Positive::ZERO
+        if &self.0 <= other {
+            // A proven negative-or-zero difference: the documented floor.
+            return Positive::ZERO;
         }
+        // The difference is strictly positive, so the checked path can only
+        // fail on overflow; that must surface, not floor at zero.
+        unwrap_or_panic(self.checked_sub_dec(*other), "sub_or_zero")
     }
 
     /// Subtracts a decimal value, returning `None` if the result would be
@@ -1712,14 +1701,7 @@ impl Positive {
     )]
     #[must_use]
     pub fn saturating_sub(&self, rhs: &Self) -> Self {
-        if self.0 > rhs.0 {
-            match dec_sub(self.0, rhs.0, "saturating_sub") {
-                Ok(result) => from_result_or_panic(result, "saturating_sub"),
-                Err(_) => Positive::ZERO,
-            }
-        } else {
-            Positive::ZERO
-        }
+        self.checked_sub(rhs).unwrap_or(Positive::ZERO)
     }
 
     /// Checked division that returns a `Result` instead of panicking.
@@ -2191,6 +2173,23 @@ impl Positive {
     }
 }
 
+/// Converts a `Positive` to an integer type, mapping the `None` that every
+/// `Decimal::to_*` returns on overflow into a typed error.
+///
+/// The three `TryFrom<Positive>` impls differed only in the method they called
+/// and the type name in the message, which is exactly the kind of duplication
+/// that let `From<Positive> for usize` acquire a silent `unwrap_or(0)` while
+/// its siblings did not.
+#[inline]
+fn try_to_integer<T>(
+    value: Positive,
+    convert: impl FnOnce(&Decimal) -> Option<T>,
+    target: &'static str,
+    reason: &'static str,
+) -> Result<T, PositiveError> {
+    convert(&value.0).ok_or_else(|| PositiveError::conversion_error("Positive", target, reason))
+}
+
 impl From<Positive> for Decimal {
     #[inline]
     fn from(value: Positive) -> Self {
@@ -2219,9 +2218,7 @@ impl TryFrom<Positive> for u64 {
     /// exceeds `u64::MAX`.
     #[inline]
     fn try_from(value: Positive) -> Result<Self, Self::Error> {
-        value.0.to_u64().ok_or_else(|| {
-            PositiveError::conversion_error("Positive", "u64", "value exceeds u64::MAX")
-        })
+        try_to_integer(value, Decimal::to_u64, "u64", "value exceeds u64::MAX")
     }
 }
 
@@ -2236,9 +2233,7 @@ impl TryFrom<Positive> for i64 {
     /// exceeds `i64::MAX`.
     #[inline]
     fn try_from(value: Positive) -> Result<Self, Self::Error> {
-        value.0.to_i64().ok_or_else(|| {
-            PositiveError::conversion_error("Positive", "i64", "value exceeds i64::MAX")
-        })
+        try_to_integer(value, Decimal::to_i64, "i64", "value exceeds i64::MAX")
     }
 }
 
@@ -2276,9 +2271,12 @@ impl TryFrom<Positive> for usize {
     /// does not fit in a `usize` on the target platform.
     #[inline]
     fn try_from(value: Positive) -> Result<Self, Self::Error> {
-        value.0.to_usize().ok_or_else(|| {
-            PositiveError::conversion_error("Positive", "usize", "value exceeds usize::MAX")
-        })
+        try_to_integer(
+            value,
+            Decimal::to_usize,
+            "usize",
+            "value exceeds usize::MAX",
+        )
     }
 }
 
@@ -2485,16 +2483,23 @@ impl From<&Positive> for Positive {
     }
 }
 
+// `f64` operands are lifted to `Decimal` once, at the boundary, and then go
+// through the same `Positive`/`Decimal` kernels as everything else. An `f64`
+// that has no `Decimal` form — NaN, an infinity, or a magnitude outside the
+// range — is reported the same way an invariant violation is, which is the
+// contract these operators have always had.
+
 impl Mul<f64> for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics when `rhs` has no `Decimal` representation, on overflow, or
+    /// when the product would break the positivity invariant. See
+    /// [`Positive::checked_mul_f64`].
     #[inline]
     fn mul(self, rhs: f64) -> Positive {
         let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("mul_f64"));
-        let result = match self.0.checked_mul(rhs_dec) {
-            Some(v) => v,
-            None => overflow_panic("mul_f64"),
-        };
-        from_result_or_panic(result, "mul_f64")
+        unwrap_or_panic(self.checked_mul_dec(rhs_dec), "mul_f64")
     }
 }
 
@@ -2504,17 +2509,17 @@ impl Div<f64> for Positive {
     /// rounding) when rounding is required. For a different strategy
     /// use [`Positive::checked_div_with_strategy`] on the lifted
     /// `Decimal`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `rhs` has no `Decimal` representation, on division by
+    /// zero, on overflow, or when the quotient would break the positivity
+    /// invariant. See [`Positive::checked_div_f64`].
     #[inline]
     fn div(self, rhs: f64) -> Positive {
         let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("div_f64"));
-        if rhs_dec.is_zero() {
-            invariant_panic("div_f64");
-        }
-        let result = match self.0.checked_div(rhs_dec) {
-            Some(v) => round_div(v),
-            None => overflow_panic("div_f64"),
-        };
-        from_result_or_panic(result, "div_f64")
+        guard_nonzero_divisor(rhs_dec, "div_f64");
+        unwrap_or_panic(self.checked_div_dec(rhs_dec), "div_f64")
     }
 }
 
@@ -2522,43 +2527,41 @@ impl Div<f64> for &Positive {
     type Output = Positive;
     /// Divides a `&Positive` by an `f64` using [`DIV_ROUNDING_STRATEGY`]
     /// (banker's rounding) when rounding is required.
+    ///
+    /// # Panics
+    ///
+    /// Same contract as `Positive / f64`.
     #[inline]
     fn div(self, rhs: f64) -> Positive {
-        let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("div_f64"));
-        if rhs_dec.is_zero() {
-            invariant_panic("div_f64");
-        }
-        let result = match self.0.checked_div(rhs_dec) {
-            Some(v) => round_div(v),
-            None => overflow_panic("div_f64"),
-        };
-        from_result_or_panic(result, "div_f64")
+        *self / rhs
     }
 }
 
 impl Sub<f64> for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics when `rhs` has no `Decimal` representation, on overflow, or
+    /// when the difference would break the positivity invariant. See
+    /// [`Positive::checked_sub_f64`].
     #[inline]
     fn sub(self, rhs: f64) -> Self::Output {
         let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("sub_f64"));
-        let result = match self.0.checked_sub(rhs_dec) {
-            Some(v) => v,
-            None => overflow_panic("sub_f64"),
-        };
-        from_result_or_panic(result, "sub_f64")
+        unwrap_or_panic(self.checked_sub_dec(rhs_dec), "sub_f64")
     }
 }
 
 impl Add<f64> for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics when `rhs` has no `Decimal` representation, on overflow, or
+    /// when the sum would break the positivity invariant. See
+    /// [`Positive::checked_add_f64`].
     #[inline]
     fn add(self, rhs: f64) -> Self::Output {
         let rhs_dec = Decimal::from_f64(rhs).unwrap_or_else(|| invariant_panic("add_f64"));
-        let result = match self.0.checked_add(rhs_dec) {
-            Some(v) => v,
-            None => overflow_panic("add_f64"),
-        };
-        from_result_or_panic(result, "add_f64")
+        unwrap_or_panic(self.checked_add_dec(rhs_dec), "add_f64")
     }
 }
 
@@ -2761,6 +2764,53 @@ impl<'de> Deserialize<'de> for Positive {
     }
 }
 
+// ===========================================================================
+// Operator adapters
+// ===========================================================================
+//
+// Every operator below is a thin adapter. The arithmetic, the overflow
+// mapping and the invariant check all live in the `checked_*` methods and the
+// `dec_*` kernels; an operator's only job is to pick the kernel and convert
+// its typed error into the documented panic.
+//
+// Written out longhand, each of these was six to ten lines of `match ...
+// checked_op` with its own literal operation name, repeated for the owned and
+// reference forms of three operand types. That duplication is what let
+// `checked_div` drift onto raw division while `checked_div_with_strategy`
+// used the checked one, and what let `Positive * Positive` skip the invariant
+// check that `Positive * Decimal` performed.
+
+/// Rejects a zero divisor before an operator divides.
+///
+/// Kept separate from the kernels because the operators report a zero divisor
+/// as an invariant violation rather than an arithmetic error, and that
+/// distinction is part of their documented panic messages.
+#[inline]
+fn guard_nonzero_divisor(divisor: Decimal, op: &'static str) {
+    if divisor.is_zero() {
+        invariant_panic(op);
+    }
+}
+
+/// Unwraps a `Decimal`-valued kernel result for an operator whose output is a
+/// `Decimal` rather than a `Positive`.
+#[inline]
+fn dec_or_panic(result: Result<Decimal, PositiveError>, op: &'static str) -> Decimal {
+    match result {
+        Ok(value) => value,
+        Err(PositiveError::ArithmeticError { .. }) => overflow_panic(op),
+        // The Decimal kernels only fail with ArithmeticError; the exhaustive
+        // match forces any future variant reaching an operator to be
+        // classified deliberately instead of being mislabelled as overflow.
+        Err(
+            error @ (PositiveError::InvalidValue { .. }
+            | PositiveError::ConversionError { .. }
+            | PositiveError::OutOfBounds { .. }
+            | PositiveError::InvalidPrecision { .. }),
+        ) => panic!("Positive {op} failed: {error}"),
+    }
+}
+
 impl Add for Positive {
     type Output = Positive;
     /// # Panics
@@ -2769,22 +2819,32 @@ impl Add for Positive {
     /// non-panicking form.
     #[inline]
     fn add(self, other: Positive) -> Positive {
-        match self.0.checked_add(other.0) {
-            Some(v) => from_result_or_panic(v, "add"),
-            None => overflow_panic("add"),
-        }
+        unwrap_or_panic(self.checked_add(&other), "add")
     }
 }
 
 impl Sub for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics on overflow, or when the difference would be negative — zero
+    /// under the `non-zero` feature. See [`Positive::checked_sub`].
     #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
-        let result = match self.0.checked_sub(rhs.0) {
-            Some(v) => v,
-            None => overflow_panic("sub"),
-        };
-        from_result_or_panic(result, "sub")
+        unwrap_or_panic(self.checked_sub(&rhs), "sub")
+    }
+}
+
+impl Mul for Positive {
+    type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics on overflow, and — under the `non-zero` feature — when the
+    /// product underflows to zero, as `1e-28 * 1e-28` does. See
+    /// [`Positive::checked_mul`] for the non-panicking form.
+    #[inline]
+    fn mul(self, other: Positive) -> Positive {
+        unwrap_or_panic(self.checked_mul(&other), "mul")
     }
 }
 
@@ -2793,15 +2853,15 @@ impl Div for Positive {
     /// Divides two `Positive` values using [`DIV_ROUNDING_STRATEGY`]
     /// (banker's rounding) when rounding is required. For a different
     /// strategy use [`Positive::checked_div_with_strategy`].
+    ///
+    /// # Panics
+    ///
+    /// Panics on division by zero, on overflow, and when the quotient would
+    /// break the positivity invariant.
     #[inline]
     fn div(self, other: Positive) -> Self::Output {
-        if other.0.is_zero() {
-            invariant_panic("div");
-        }
-        match self.0.checked_div(other.0) {
-            Some(v) => from_result_or_panic(round_div(v), "div"),
-            None => overflow_panic("div"),
-        }
+        guard_nonzero_divisor(other.0, "div");
+        unwrap_or_panic(self.checked_div(&other), "div")
     }
 }
 
@@ -2809,63 +2869,105 @@ impl Div for &Positive {
     type Output = Positive;
     /// Divides two `&Positive` values using [`DIV_ROUNDING_STRATEGY`]
     /// (banker's rounding) when rounding is required.
+    ///
+    /// # Panics
+    ///
+    /// Same contract as `Positive / Positive`; both delegate to
+    /// [`Positive::checked_div`].
     #[inline]
     fn div(self, other: &Positive) -> Self::Output {
-        if other.0.is_zero() {
-            invariant_panic("div");
-        }
-        match self.0.checked_div(other.0) {
-            Some(v) => from_result_or_panic(round_div(v), "div"),
-            None => overflow_panic("div"),
-        }
+        guard_nonzero_divisor(other.0, "div");
+        unwrap_or_panic(self.checked_div(other), "div")
     }
 }
 
 impl Add<Decimal> for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics on overflow, or when the sum would break the positivity
+    /// invariant. See [`Positive::checked_add_dec`].
     #[inline]
     fn add(self, rhs: Decimal) -> Positive {
-        let result = match self.0.checked_add(rhs) {
-            Some(v) => v,
-            None => overflow_panic("add_decimal"),
-        };
-        from_result_or_panic(result, "add_decimal")
+        unwrap_or_panic(self.checked_add_dec(rhs), "add_decimal")
     }
 }
 
 impl Add<&Decimal> for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Same contract as `Positive + Decimal`.
     #[inline]
     fn add(self, rhs: &Decimal) -> Self::Output {
-        let result = match self.0.checked_add(*rhs) {
-            Some(v) => v,
-            None => overflow_panic("add_decimal"),
-        };
-        from_result_or_panic(result, "add_decimal")
+        unwrap_or_panic(self.checked_add_dec(*rhs), "add_decimal")
     }
 }
 
 impl Sub<Decimal> for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics on overflow, or when the difference would break the positivity
+    /// invariant. See [`Positive::checked_sub_dec`].
     #[inline]
     fn sub(self, rhs: Decimal) -> Positive {
-        let result = match self.0.checked_sub(rhs) {
-            Some(v) => v,
-            None => overflow_panic("sub_decimal"),
-        };
-        from_result_or_panic(result, "sub_decimal")
+        unwrap_or_panic(self.checked_sub_dec(rhs), "sub_decimal")
     }
 }
 
 impl Sub<&Decimal> for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Same contract as `Positive - Decimal`.
     #[inline]
     fn sub(self, rhs: &Decimal) -> Self::Output {
-        let result = match self.0.checked_sub(*rhs) {
-            Some(v) => v,
-            None => overflow_panic("sub_decimal"),
-        };
-        from_result_or_panic(result, "sub_decimal")
+        unwrap_or_panic(self.checked_sub_dec(*rhs), "sub_decimal")
+    }
+}
+
+impl Mul<Decimal> for Positive {
+    type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics on overflow, or when the product would break the positivity
+    /// invariant — for example when `rhs` is negative. See
+    /// [`Positive::checked_mul_dec`].
+    #[inline]
+    fn mul(self, rhs: Decimal) -> Positive {
+        unwrap_or_panic(self.checked_mul_dec(rhs), "mul_decimal")
+    }
+}
+
+impl Div<Decimal> for Positive {
+    type Output = Positive;
+    /// Divides by a `Decimal` using [`DIV_ROUNDING_STRATEGY`] (banker's
+    /// rounding) when rounding is required.
+    ///
+    /// # Panics
+    ///
+    /// Panics on division by zero, on overflow, and when the quotient would
+    /// break the positivity invariant. See [`Positive::checked_div_dec`].
+    #[inline]
+    fn div(self, rhs: Decimal) -> Positive {
+        guard_nonzero_divisor(rhs, "div_decimal");
+        unwrap_or_panic(self.checked_div_dec(rhs), "div_decimal")
+    }
+}
+
+impl Div<&Decimal> for Positive {
+    type Output = Positive;
+    /// Divides by a `&Decimal` using [`DIV_ROUNDING_STRATEGY`] (banker's
+    /// rounding) when rounding is required.
+    ///
+    /// # Panics
+    ///
+    /// Same contract as `Positive / Decimal`.
+    #[inline]
+    fn div(self, rhs: &Decimal) -> Self::Output {
+        guard_nonzero_divisor(*rhs, "div_decimal");
+        unwrap_or_panic(self.checked_div_dec(*rhs), "div_decimal")
     }
 }
 
@@ -2876,66 +2978,29 @@ impl AddAssign for Positive {
     /// invariant.
     #[inline]
     fn add_assign(&mut self, other: Positive) {
-        match self.0.checked_add(other.0) {
-            Some(v) => *self = from_result_or_panic(v, "add_assign"),
-            None => overflow_panic("add_assign"),
-        }
+        *self = unwrap_or_panic(self.checked_add(&other), "add_assign");
     }
 }
 
 impl AddAssign<Decimal> for Positive {
+    /// # Panics
+    ///
+    /// Panics on overflow, or when the result would break the positivity
+    /// invariant.
     #[inline]
     fn add_assign(&mut self, rhs: Decimal) {
-        let result = match self.0.checked_add(rhs) {
-            Some(v) => v,
-            None => overflow_panic("add_assign_decimal"),
-        };
-        *self = from_result_or_panic(result, "add_assign_decimal");
+        *self = unwrap_or_panic(self.checked_add_dec(rhs), "add_assign_decimal");
     }
 }
 
 impl MulAssign<Decimal> for Positive {
+    /// # Panics
+    ///
+    /// Panics on overflow, or when the result would break the positivity
+    /// invariant.
     #[inline]
     fn mul_assign(&mut self, rhs: Decimal) {
-        let result = match self.0.checked_mul(rhs) {
-            Some(v) => v,
-            None => overflow_panic("mul_assign_decimal"),
-        };
-        *self = from_result_or_panic(result, "mul_assign_decimal");
-    }
-}
-
-impl Div<Decimal> for Positive {
-    type Output = Positive;
-    /// Divides by a `Decimal` using [`DIV_ROUNDING_STRATEGY`] (banker's
-    /// rounding) when rounding is required.
-    #[inline]
-    fn div(self, rhs: Decimal) -> Positive {
-        if rhs.is_zero() {
-            invariant_panic("div_decimal");
-        }
-        let result = match self.0.checked_div(rhs) {
-            Some(v) => round_div(v),
-            None => overflow_panic("div_decimal"),
-        };
-        from_result_or_panic(result, "div_decimal")
-    }
-}
-
-impl Div<&Decimal> for Positive {
-    type Output = Positive;
-    /// Divides by a `&Decimal` using [`DIV_ROUNDING_STRATEGY`] (banker's
-    /// rounding) when rounding is required.
-    #[inline]
-    fn div(self, rhs: &Decimal) -> Self::Output {
-        if rhs.is_zero() {
-            invariant_panic("div_decimal");
-        }
-        let result = match self.0.checked_div(*rhs) {
-            Some(v) => round_div(v),
-            None => overflow_panic("div_decimal"),
-        };
-        from_result_or_panic(result, "div_decimal")
+        *self = unwrap_or_panic(self.checked_mul_dec(rhs), "mul_assign_decimal");
     }
 }
 
@@ -2955,140 +3020,133 @@ impl PartialOrd<Positive> for Decimal {
     }
 }
 
-impl Mul for Positive {
-    type Output = Positive;
-    /// # Panics
-    ///
-    /// Panics on overflow, and — under the `non-zero` feature — when the
-    /// product underflows to zero, as `1e-28 * 1e-28` does. See
-    /// [`Positive::checked_mul`] for the non-panicking form.
-    #[inline]
-    fn mul(self, other: Positive) -> Positive {
-        match self.0.checked_mul(other.0) {
-            Some(v) => from_result_or_panic(v, "mul"),
-            None => overflow_panic("mul"),
-        }
-    }
-}
-
-impl Mul<Decimal> for Positive {
-    type Output = Positive;
-    #[inline]
-    fn mul(self, rhs: Decimal) -> Positive {
-        let result = match self.0.checked_mul(rhs) {
-            Some(v) => v,
-            None => overflow_panic("mul_decimal"),
-        };
-        from_result_or_panic(result, "mul_decimal")
-    }
-}
+// --- `Decimal` on the left-hand side: the result is a `Decimal`, so these go
+// --- through the `dec_*` kernels directly rather than through `Positive`'s
+// --- checked methods, which would validate an invariant the output does not
+// --- have to satisfy.
 
 impl Mul<Positive> for Decimal {
     type Output = Decimal;
+    /// # Panics
+    ///
+    /// Panics on overflow.
     #[inline]
     fn mul(self, rhs: Positive) -> Decimal {
-        match self.checked_mul(rhs.0) {
-            Some(v) => v,
-            None => overflow_panic("mul_decimal_by_positive"),
-        }
+        dec_or_panic(
+            dec_mul(self, rhs.0, "mul_decimal_by_positive"),
+            "mul_decimal_by_positive",
+        )
     }
 }
 
 impl Div<Positive> for Decimal {
     type Output = Decimal;
+    /// # Panics
+    ///
+    /// Panics on division by zero and on overflow.
     #[inline]
     fn div(self, rhs: Positive) -> Decimal {
-        if rhs.0.is_zero() {
-            invariant_panic("div_decimal_by_positive");
-        }
-        match self.checked_div(rhs.0) {
-            Some(v) => v,
-            None => overflow_panic("div_decimal_by_positive"),
-        }
+        guard_nonzero_divisor(rhs.0, "div_decimal_by_positive");
+        dec_or_panic(
+            dec_div(self, rhs.0, "div_decimal_by_positive"),
+            "div_decimal_by_positive",
+        )
     }
 }
 
 impl Sub<Positive> for Decimal {
     type Output = Decimal;
+    /// # Panics
+    ///
+    /// Panics on overflow.
     #[inline]
     fn sub(self, rhs: Positive) -> Decimal {
-        match self.checked_sub(rhs.0) {
-            Some(v) => v,
-            None => overflow_panic("sub_decimal_by_positive"),
-        }
+        dec_or_panic(
+            dec_sub(self, rhs.0, "sub_decimal_by_positive"),
+            "sub_decimal_by_positive",
+        )
     }
 }
 
 impl Sub<&Positive> for Decimal {
     type Output = Decimal;
+    /// # Panics
+    ///
+    /// Same contract as `Decimal - Positive`.
     #[inline]
     fn sub(self, rhs: &Positive) -> Decimal {
-        match self.checked_sub(rhs.0) {
-            Some(v) => v,
-            None => overflow_panic("sub_decimal_by_positive"),
-        }
+        self - *rhs
     }
 }
 
 impl Add<Positive> for Decimal {
     type Output = Decimal;
+    /// # Panics
+    ///
+    /// Panics on overflow.
     #[inline]
     fn add(self, rhs: Positive) -> Decimal {
-        match self.checked_add(rhs.0) {
-            Some(v) => v,
-            None => overflow_panic("add_decimal_by_positive"),
-        }
+        dec_or_panic(
+            dec_add(self, rhs.0, "add_decimal_by_positive"),
+            "add_decimal_by_positive",
+        )
     }
 }
 
 impl Add<&Positive> for Decimal {
     type Output = Decimal;
+    /// # Panics
+    ///
+    /// Same contract as `Decimal + Positive`.
     #[inline]
     fn add(self, rhs: &Positive) -> Decimal {
-        match self.checked_add(rhs.0) {
-            Some(v) => v,
-            None => overflow_panic("add_decimal_by_positive"),
-        }
+        self + *rhs
     }
 }
 
 impl std::ops::AddAssign<Positive> for Decimal {
+    /// # Panics
+    ///
+    /// Panics on overflow.
     #[inline]
     fn add_assign(&mut self, rhs: Positive) {
-        match self.checked_add(rhs.0) {
-            Some(v) => *self = v,
-            None => overflow_panic("add_assign_decimal_by_positive"),
-        }
+        *self = dec_or_panic(
+            dec_add(*self, rhs.0, "add_assign_decimal_by_positive"),
+            "add_assign_decimal_by_positive",
+        );
     }
 }
 
 impl std::ops::AddAssign<&Positive> for Decimal {
+    /// # Panics
+    ///
+    /// Same contract as `Decimal += Positive`.
     #[inline]
     fn add_assign(&mut self, rhs: &Positive) {
-        match self.checked_add(rhs.0) {
-            Some(v) => *self = v,
-            None => overflow_panic("add_assign_decimal_by_positive"),
-        }
+        *self += *rhs;
     }
 }
 
 impl std::ops::MulAssign<Positive> for Decimal {
+    /// # Panics
+    ///
+    /// Panics on overflow.
     #[inline]
     fn mul_assign(&mut self, rhs: Positive) {
-        match self.checked_mul(rhs.0) {
-            Some(v) => *self = v,
-            None => overflow_panic("mul_assign_decimal_by_positive"),
-        }
+        *self = dec_or_panic(
+            dec_mul(*self, rhs.0, "mul_assign_decimal_by_positive"),
+            "mul_assign_decimal_by_positive",
+        );
     }
 }
 
 impl std::ops::MulAssign<&Positive> for Decimal {
+    /// # Panics
+    ///
+    /// Same contract as `Decimal *= Positive`.
     #[inline]
     fn mul_assign(&mut self, rhs: &Positive) {
-        match self.checked_mul(rhs.0) {
-            Some(v) => *self = v,
-            None => overflow_panic("mul_assign_decimal_by_positive"),
-        }
+        *self *= *rhs;
     }
 }
 
