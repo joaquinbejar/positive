@@ -216,6 +216,28 @@ pub(crate) fn invariant_panic(op: &'static str) -> ! {
     panic!("Positive invariant broken in {op}: result would be non-positive")
 }
 
+/// Builds a `Positive` from the result of an arithmetic or mathematical
+/// operation, validating the feature-dependent invariant first.
+///
+/// This is the single point every `Positive`-returning path that cannot
+/// return a `Result` goes through. Constructing `Positive(value)` directly is
+/// reserved for constructors and constants whose precondition is statically
+/// evident; anywhere a `Decimal` has been through an operation, the result has
+/// to come through here.
+///
+/// Overflow is reported separately, before this point: the `dec_*` kernels
+/// turn it into an `ArithmeticError`, and the operators turn that into
+/// [`overflow_panic`]. This function only decides whether a *representable*
+/// result satisfies the invariant.
+#[inline]
+pub(crate) fn from_result_or_panic(value: Decimal, op: &'static str) -> Positive {
+    if is_valid_positive_value(value) {
+        Positive(value)
+    } else {
+        invariant_panic(op)
+    }
+}
+
 impl Positive {
     // Re-export constants from the constants module for backward compatibility
     /// A zero value represented as a `Positive` value.
@@ -527,57 +549,108 @@ impl Positive {
     }
 
     /// Rounds the value down to the nearest integer.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the floored result would break the positivity invariant.
+    /// Under the `non-zero` feature this includes every value below one, whose
+    /// floor is zero — for example `0.5`. Without that feature this method
+    /// cannot panic.
     #[must_use]
     pub fn floor(&self) -> Positive {
-        Positive(self.0.floor())
+        from_result_or_panic(self.0.floor(), "floor")
     }
 
     /// Raises this value to an integer power.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the result would break the positivity invariant — under the
+    /// `non-zero` feature, when the power underflows to zero.
     #[must_use]
     pub fn powi(&self, n: i64) -> Positive {
-        Positive(self.0.powi(n))
+        from_result_or_panic(self.0.powi(n), "powi")
     }
 
     /// Computes the result of raising the current value to the power of the given exponent.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the result would break the positivity invariant — under the
+    /// `non-zero` feature, when the power underflows to zero.
     #[must_use]
     pub fn pow(&self, n: Positive) -> Positive {
-        Positive(self.0.pow(n.to_dec()))
+        from_result_or_panic(self.0.pow(n.to_dec()), "pow")
     }
 
     /// Raises the current value to the power of `n` using unsigned integer exponentiation.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the result would break the positivity invariant — under the
+    /// `non-zero` feature, when the power underflows to zero.
     #[must_use]
     pub fn powu(&self, n: u64) -> Positive {
-        Positive(self.0.powu(n))
+        from_result_or_panic(self.0.powu(n), "powu")
     }
 
     /// Raises this value to a decimal power.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the result would break the positivity invariant — under the
+    /// `non-zero` feature, when the power underflows to zero.
     #[must_use]
     pub fn powd(&self, p0: Decimal) -> Positive {
-        Positive(self.0.powd(p0))
+        from_result_or_panic(self.0.powd(p0), "powd")
     }
 
     /// Rounds the value to the nearest integer.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the rounded result would break the positivity invariant.
+    /// Under the `non-zero` feature this includes every value below `0.5`,
+    /// which rounds to zero. Without that feature this method cannot panic.
     #[must_use]
     pub fn round(&self) -> Positive {
-        Positive(self.0.round())
+        from_result_or_panic(self.0.round(), "round")
     }
 
     /// Rounds the current value to a "nice" number, based on its magnitude.
+    ///
+    /// The magnitude is computed entirely in `Decimal`. The previous
+    /// implementation routed it through `Positive`, which meant that for any
+    /// input below ten the intermediate magnitude was zero — an invalid
+    /// `Positive` under the `non-zero` feature — and that the final scaling
+    /// went through `magnitude.to_u64()`, which cannot represent the negative
+    /// magnitude of an input below one.
+    ///
+    /// # Panics
+    ///
+    /// Panics for a zero input, because `log10(0)` is undefined. A
+    /// non-panicking variant is issue #73.
     #[must_use]
     pub fn round_to_nice_number(&self) -> Positive {
-        let magnitude = self.log10().floor();
-        let ten_pow = Positive::TEN.pow(magnitude);
-        let normalized = self / &ten_pow;
-        let nice_number = if normalized < dec!(1.5) {
-            Positive::ONE
-        } else if normalized < pos_or_panic!(3.0) {
-            Positive::TWO
-        } else if normalized < pos_or_panic!(7.0) {
-            pos_or_panic!(5.0)
-        } else {
-            Positive::TEN
+        let magnitude = self.0.log10().floor();
+        let ten_pow = Decimal::TEN.powd(magnitude);
+        let normalized = match dec_div(self.0, ten_pow, "round_to_nice_number") {
+            Ok(value) => value,
+            Err(_) => invariant_panic("round_to_nice_number"),
         };
-        nice_number * pos_or_panic!(10.0).powu(magnitude.to_u64())
+        let nice_number = if normalized < dec!(1.5) {
+            Decimal::ONE
+        } else if normalized < dec!(3.0) {
+            dec!(2)
+        } else if normalized < dec!(7.0) {
+            dec!(5)
+        } else {
+            dec!(10)
+        };
+        match dec_mul(nice_number, ten_pow, "round_to_nice_number") {
+            Ok(value) => from_result_or_panic(value, "round_to_nice_number"),
+            Err(_) => overflow_panic("round_to_nice_number"),
+        }
     }
 
     /// Calculates the square root of the value.
@@ -588,28 +661,39 @@ impl Positive {
     /// Use `sqrt_checked()` for a non-panicking alternative.
     #[must_use]
     pub fn sqrt(&self) -> Positive {
-        Positive(self.0.sqrt().expect("Square root calculation failed"))
+        from_result_or_panic(
+            self.0.sqrt().expect("Square root calculation failed"),
+            "sqrt",
+        )
     }
 
     /// Calculates the square root, returning an error if it fails.
     pub fn sqrt_checked(&self) -> Result<Positive, PositiveError> {
-        self.0.sqrt().map(Positive).ok_or_else(|| {
+        let root = self.0.sqrt().ok_or_else(|| {
             PositiveError::arithmetic_error("sqrt", "square root calculation failed")
-        })
+        })?;
+        Positive::new_decimal(root)
     }
 
     /// Calculates the natural logarithm of the value.
     #[inline]
     #[must_use]
     pub fn ln(&self) -> Positive {
-        Positive(self.0.ln())
+        from_result_or_panic(self.0.ln(), "ln")
     }
 
     /// Rounds the value to a specified number of decimal places.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the rounded result would break the positivity invariant.
+    /// Under the `non-zero` feature this includes any value that rounds to
+    /// zero at the requested scale — for example `0.5` at `round_to(0)`.
+    /// Without that feature this method cannot panic.
     #[inline]
     #[must_use]
     pub fn round_to(&self, decimal_places: u32) -> Positive {
-        Positive(self.0.round_dp(decimal_places))
+        from_result_or_panic(self.0.round_dp(decimal_places), "round_to")
     }
 
     /// Formats the value with a fixed number of decimal places.
@@ -632,7 +716,7 @@ impl Positive {
     #[inline]
     #[must_use]
     pub fn exp(&self) -> Positive {
-        Positive(self.0.exp())
+        from_result_or_panic(self.0.exp(), "exp")
     }
 
     /// Clamps the value between a minimum and maximum.
@@ -655,17 +739,24 @@ impl Positive {
     }
 
     /// Returns the smallest integer greater than or equal to the value.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the result would break the positivity invariant. For a
+    /// value that already satisfies the invariant the ceiling always does too,
+    /// so in practice this method does not panic; the check is present so no
+    /// `Positive`-returning path can bypass validation.
     #[inline]
     #[must_use]
     pub fn ceiling(&self) -> Positive {
-        Positive(self.to_dec().ceil())
+        from_result_or_panic(self.to_dec().ceil(), "ceiling")
     }
 
     /// Computes the base-10 logarithm of the value.
     #[inline]
     #[must_use]
     pub fn log10(&self) -> Positive {
-        Positive(self.0.log10())
+        from_result_or_panic(self.0.log10(), "log10")
     }
 
     /// Subtracts a decimal value, returning zero if the result would be negative.
@@ -685,7 +776,7 @@ impl Positive {
     pub fn sub_or_zero(&self, other: &Decimal) -> Positive {
         if &self.0 > other {
             match dec_sub(self.0, *other, "sub_or_zero") {
-                Ok(result) => Positive(result),
+                Ok(result) => from_result_or_panic(result, "sub_or_zero"),
                 Err(_) => Positive::ZERO,
             }
         } else {
@@ -821,7 +912,7 @@ impl Positive {
     pub fn saturating_sub(&self, rhs: &Self) -> Self {
         if self.0 > rhs.0 {
             match dec_sub(self.0, rhs.0, "saturating_sub") {
-                Ok(result) => Positive(result),
+                Ok(result) => from_result_or_panic(result, "saturating_sub"),
                 Err(_) => Positive::ZERO,
             }
         } else {
@@ -1463,6 +1554,8 @@ impl TryFrom<u64> for Positive {
 }
 
 impl From<&Positive> for Positive {
+    /// Copies an already-validated `Positive`, so the invariant holds by
+    /// construction and no re-check is needed.
     #[inline]
     fn from(value: &Positive) -> Self {
         Positive(value.0)
@@ -1478,11 +1571,7 @@ impl Mul<f64> for Positive {
             Some(v) => v,
             None => overflow_panic("mul_f64"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("mul_f64")
-        }
+        from_result_or_panic(result, "mul_f64")
     }
 }
 
@@ -1502,11 +1591,7 @@ impl Div<f64> for Positive {
             Some(v) => round_div(v),
             None => overflow_panic("div_f64"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("div_f64")
-        }
+        from_result_or_panic(result, "div_f64")
     }
 }
 
@@ -1524,11 +1609,7 @@ impl Div<f64> for &Positive {
             Some(v) => round_div(v),
             None => overflow_panic("div_f64"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("div_f64")
-        }
+        from_result_or_panic(result, "div_f64")
     }
 }
 
@@ -1541,11 +1622,7 @@ impl Sub<f64> for Positive {
             Some(v) => v,
             None => overflow_panic("sub_f64"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("sub_f64")
-        }
+        from_result_or_panic(result, "sub_f64")
     }
 }
 
@@ -1558,11 +1635,7 @@ impl Add<f64> for Positive {
             Some(v) => v,
             None => overflow_panic("add_f64"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("add_f64")
-        }
+        from_result_or_panic(result, "add_f64")
     }
 }
 
@@ -1733,10 +1806,14 @@ impl<'de> Deserialize<'de> for Positive {
 
 impl Add for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics on overflow. See [`Positive::checked_add`] for the
+    /// non-panicking form.
     #[inline]
     fn add(self, other: Positive) -> Positive {
         match self.0.checked_add(other.0) {
-            Some(v) => Positive(v),
+            Some(v) => from_result_or_panic(v, "add"),
             None => overflow_panic("add"),
         }
     }
@@ -1750,11 +1827,7 @@ impl Sub for Positive {
             Some(v) => v,
             None => overflow_panic("sub"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("sub")
-        }
+        from_result_or_panic(result, "sub")
     }
 }
 
@@ -1769,7 +1842,7 @@ impl Div for Positive {
             invariant_panic("div");
         }
         match self.0.checked_div(other.0) {
-            Some(v) => Positive(round_div(v)),
+            Some(v) => from_result_or_panic(round_div(v), "div"),
             None => overflow_panic("div"),
         }
     }
@@ -1785,7 +1858,7 @@ impl Div for &Positive {
             invariant_panic("div");
         }
         match self.0.checked_div(other.0) {
-            Some(v) => Positive(round_div(v)),
+            Some(v) => from_result_or_panic(round_div(v), "div"),
             None => overflow_panic("div"),
         }
     }
@@ -1799,11 +1872,7 @@ impl Add<Decimal> for Positive {
             Some(v) => v,
             None => overflow_panic("add_decimal"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("add_decimal")
-        }
+        from_result_or_panic(result, "add_decimal")
     }
 }
 
@@ -1815,11 +1884,7 @@ impl Add<&Decimal> for Positive {
             Some(v) => v,
             None => overflow_panic("add_decimal"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("add_decimal")
-        }
+        from_result_or_panic(result, "add_decimal")
     }
 }
 
@@ -1831,11 +1896,7 @@ impl Sub<Decimal> for Positive {
             Some(v) => v,
             None => overflow_panic("sub_decimal"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("sub_decimal")
-        }
+        from_result_or_panic(result, "sub_decimal")
     }
 }
 
@@ -1847,19 +1908,19 @@ impl Sub<&Decimal> for Positive {
             Some(v) => v,
             None => overflow_panic("sub_decimal"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("sub_decimal")
-        }
+        from_result_or_panic(result, "sub_decimal")
     }
 }
 
 impl AddAssign for Positive {
+    /// # Panics
+    ///
+    /// Panics on overflow, or when the result would break the positivity
+    /// invariant.
     #[inline]
     fn add_assign(&mut self, other: Positive) {
         match self.0.checked_add(other.0) {
-            Some(v) => self.0 = v,
+            Some(v) => *self = from_result_or_panic(v, "add_assign"),
             None => overflow_panic("add_assign"),
         }
     }
@@ -1872,11 +1933,7 @@ impl AddAssign<Decimal> for Positive {
             Some(v) => v,
             None => overflow_panic("add_assign_decimal"),
         };
-        if is_valid_positive_value(result) {
-            self.0 = result;
-        } else {
-            invariant_panic("add_assign_decimal");
-        }
+        *self = from_result_or_panic(result, "add_assign_decimal");
     }
 }
 
@@ -1887,11 +1944,7 @@ impl MulAssign<Decimal> for Positive {
             Some(v) => v,
             None => overflow_panic("mul_assign_decimal"),
         };
-        if is_valid_positive_value(result) {
-            self.0 = result;
-        } else {
-            invariant_panic("mul_assign_decimal");
-        }
+        *self = from_result_or_panic(result, "mul_assign_decimal");
     }
 }
 
@@ -1908,11 +1961,7 @@ impl Div<Decimal> for Positive {
             Some(v) => round_div(v),
             None => overflow_panic("div_decimal"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("div_decimal")
-        }
+        from_result_or_panic(result, "div_decimal")
     }
 }
 
@@ -1929,11 +1978,7 @@ impl Div<&Decimal> for Positive {
             Some(v) => round_div(v),
             None => overflow_panic("div_decimal"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("div_decimal")
-        }
+        from_result_or_panic(result, "div_decimal")
     }
 }
 
@@ -1946,10 +1991,15 @@ impl PartialOrd<Decimal> for Positive {
 
 impl Mul for Positive {
     type Output = Positive;
+    /// # Panics
+    ///
+    /// Panics on overflow, and — under the `non-zero` feature — when the
+    /// product underflows to zero, as `1e-28 * 1e-28` does. See
+    /// [`Positive::checked_mul`] for the non-panicking form.
     #[inline]
     fn mul(self, other: Positive) -> Positive {
         match self.0.checked_mul(other.0) {
-            Some(v) => Positive(v),
+            Some(v) => from_result_or_panic(v, "mul"),
             None => overflow_panic("mul"),
         }
     }
@@ -1963,11 +2013,7 @@ impl Mul<Decimal> for Positive {
             Some(v) => v,
             None => overflow_panic("mul_decimal"),
         };
-        if is_valid_positive_value(result) {
-            Positive(result)
-        } else {
-            invariant_panic("mul_decimal")
-        }
+        from_result_or_panic(result, "mul_decimal")
     }
 }
 
