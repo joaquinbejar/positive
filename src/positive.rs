@@ -292,6 +292,36 @@ pub(crate) fn domain_panic(op: &'static str) -> ! {
     panic!("Positive domain error in {op}: value is outside the operation's domain")
 }
 
+/// Validates a caller-supplied number of decimal places against the range
+/// `rust_decimal::Decimal` actually supports.
+///
+/// This runs **before** any rounding or allocation. `format_fixed_places` used
+/// to pass its argument straight to `format!` as the precision, so a value
+/// like `u32::MAX` asked for a four-billion-character `String` and aborted the
+/// process on allocation failure. Validating first turns that into a typed
+/// error.
+#[inline]
+pub(crate) fn validate_precision(decimal_places: u32) -> Result<u32, PositiveError> {
+    if decimal_places > Decimal::MAX_SCALE {
+        return Err(PositiveError::invalid_precision(
+            decimal_places,
+            "decimal supports at most 28 decimal places",
+        ));
+    }
+    Ok(decimal_places)
+}
+
+/// Panics with a uniform message when a caller-supplied precision is outside
+/// the range `Decimal` supports.
+#[cold]
+#[inline(never)]
+pub(crate) fn precision_panic(decimal_places: u32) -> ! {
+    panic!(
+        "Positive precision {decimal_places} is invalid: decimal supports at most {} decimal places",
+        Decimal::MAX_SCALE
+    )
+}
+
 /// Panics with a uniform message when a value cannot be represented in the
 /// destination primitive type.
 #[cold]
@@ -1195,7 +1225,10 @@ impl Positive {
     #[inline]
     #[must_use]
     pub fn round_to(&self, decimal_places: u32) -> Positive {
-        unwrap_or_panic(self.checked_round_to(decimal_places), "round_to")
+        match validate_precision(decimal_places) {
+            Ok(_) => unwrap_or_panic(self.checked_round_to(decimal_places), "round_to"),
+            Err(_) => precision_panic(decimal_places),
+        }
     }
 
     /// Rounds to a specified number of decimal places, returning an error
@@ -1219,6 +1252,7 @@ impl Positive {
     #[inline]
     #[must_use = "checked arithmetic returns a Result; ignoring it silences the invariant error"]
     pub fn checked_round_to(&self, decimal_places: u32) -> Result<Positive, PositiveError> {
+        let decimal_places = validate_precision(decimal_places)?;
         Positive::new_decimal(self.0.round_dp(decimal_places))
     }
 
@@ -1228,14 +1262,70 @@ impl Positive {
     /// default rounding strategy and formats the result. No
     /// `f64` round-trip, so precision is preserved beyond the ~15 digits
     /// of `f64`.
+    ///
+    /// # Allocation
+    ///
+    /// The returned `String` is at most a few dozen bytes, because
+    /// `decimal_places` is validated against `Decimal::MAX_SCALE` (28) before
+    /// any allocation happens. Earlier versions passed the argument straight
+    /// through to `format!`, so `format_fixed_places(u32::MAX)` asked for a
+    /// four-billion-character string and aborted the process on allocation
+    /// failure — a denial of service reachable from user or config input.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `decimal_places` exceeds 28. Use
+    /// [`Positive::checked_format_fixed_places`] for the non-panicking form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::pos_or_panic;
+    ///
+    /// assert_eq!(pos_or_panic!(1.2345).format_fixed_places(2), "1.23");
+    /// ```
     #[inline]
     #[must_use]
     pub fn format_fixed_places(&self, decimal_places: u32) -> String {
-        format!(
+        match self.checked_format_fixed_places(decimal_places) {
+            Ok(formatted) => formatted,
+            Err(_) => precision_panic(decimal_places),
+        }
+    }
+
+    /// Formats the value with a fixed number of decimal places, returning an
+    /// error instead of panicking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PositiveError::InvalidPrecision`] when `decimal_places`
+    /// exceeds the 28 places `Decimal` supports. The check runs before any
+    /// rounding or allocation, so an absurd precision costs nothing.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use positive::{PositiveError, pos_or_panic};
+    ///
+    /// let value = pos_or_panic!(1.2345);
+    /// assert_eq!(value.checked_format_fixed_places(2).unwrap(), "1.23");
+    /// assert!(matches!(
+    ///     value.checked_format_fixed_places(u32::MAX).unwrap_err(),
+    ///     PositiveError::InvalidPrecision { .. }
+    /// ));
+    /// ```
+    #[inline]
+    #[must_use = "checked formatting returns a Result; ignoring it silences the precision error"]
+    pub fn checked_format_fixed_places(
+        &self,
+        decimal_places: u32,
+    ) -> Result<String, PositiveError> {
+        let decimal_places = validate_precision(decimal_places)?;
+        Ok(format!(
             "{:.1$}",
             self.0.round_dp(decimal_places),
             decimal_places as usize
-        )
+        ))
     }
 
     /// Calculates the exponential function e^x for this value.
