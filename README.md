@@ -44,21 +44,21 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-positive = "0.6"
+positive = "0.7"
 ```
 
 To require strictly positive values (excluding zero):
 
 ```toml
 [dependencies]
-positive = { version = "0.6", features = ["non-zero"] }
+positive = { version = "0.7", features = ["non-zero"] }
 ```
 
 To enable OpenAPI schema support:
 
 ```toml
 [dependencies]
-positive = { version = "0.6", features = ["utoipa"] }
+positive = { version = "0.7", features = ["utoipa"] }
 ```
 
 ### Quick Start
