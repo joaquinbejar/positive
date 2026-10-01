@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-01
+
+### Changed
+- **Breaking:** the optional `utoipa` dependency is upgraded from 5.5 to
+  6.0, so `Positive` implements `utoipa::ToSchema` from utoipa 6. Crates
+  still on utoipa 5 should stay on `positive` 0.6.
+- **Breaking:** minimum supported Rust version raised from 1.85 to 1.88,
+  required by utoipa 6.
+- Dependencies updated to their latest stable versions.
+
+### Added
+- `tests/utoipa_schema.rs`: checks that `Positive` implements
+  `utoipa::ToSchema` and composes into a derived schema.
+
 ## [0.6.1] - 2026-09-18
 
 ### Changed
