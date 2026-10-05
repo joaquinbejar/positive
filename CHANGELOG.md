@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-05
+
+### Removed
+- **Breaking:** the `non-zero` Cargo feature, deprecated in 0.7.1 (#126). It
+  changed what `Positive` means instead of adding a type, so through Cargo
+  feature unification any dependency could silently make every `Positive` in
+  a build strictly positive (#122). `Positive` is now always `>= 0`, and
+  `StrictlyPositive` is the only strictly positive type.
+
+  Migration: drop `features = ["non-zero"]` and use `StrictlyPositive`
+  wherever `> 0` is required. `Positive` accepts zero again in those builds,
+  and `Positive::default()` is zero instead of one. Enabling the removed
+  feature makes `cargo` fail with an unknown-feature error, so the break is
+  loud, not silent.
+
+### Changed
+- `Positive::ZERO`, `constants::ZERO`, the `Sum` impls (owned and borrowed),
+  `Default` (which returns `Positive::ZERO`), and the deprecated
+  `sub_or_zero`/`saturating_sub` are now available unconditionally, since
+  they no longer depend on a feature.
+
 ## [0.7.1] - 2026-10-05
 
 ### Added
