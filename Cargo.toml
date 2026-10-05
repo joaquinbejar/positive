@@ -1,6 +1,6 @@
 [package]
 name = "positive"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 # Minimum supported Rust version for consumers of this library. Verified in CI
 # by building the library at exactly this version, in every feature
@@ -30,6 +30,8 @@ criterion = { version = "0.8", features = ["html_reports"] }
 [features]
 default = []
 utoipa = ["dep:utoipa"]
+# Deprecated since 0.7.1: not additive (it changes what `Positive` means for
+# the whole build). Use `StrictlyPositive` instead; removal is planned.
 non-zero = []
 
 [[bench]]
