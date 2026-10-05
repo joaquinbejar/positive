@@ -68,7 +68,6 @@ fn main() {
         Err(e) => println!("Division error: {e}"),
     }
 
-    #[cfg(not(feature = "non-zero"))]
     match a.checked_div(&ZERO) {
         Ok(result) => println!("{a} / 0 = {result}"),
         Err(e) => println!("Division by zero error: {e}"),
@@ -77,7 +76,6 @@ fn main() {
     // Flooring at zero, explicitly (never fails)
     println!("\n--- Flooring At Zero ---");
 
-    #[cfg(not(feature = "non-zero"))]
     #[allow(deprecated)]
     {
         let small = pos_or_panic!(5.0);

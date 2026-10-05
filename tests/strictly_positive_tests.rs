@@ -6,10 +6,8 @@
 
 //! Integration tests for `StrictlyPositive`.
 //!
-//! The strict invariant (`> 0`) does not depend on the `non-zero` feature, so
-//! almost every test here runs unchanged in all three configurations. The few
-//! that need a zero `Positive` are gated on `not(feature = "non-zero")`, where
-//! such a value exists.
+//! The strict invariant (`> 0`) does not depend on any feature flag, so every
+//! test here runs unchanged in every configuration.
 
 use approx::{abs_diff_eq, relative_eq};
 use positive::prelude::*;
@@ -76,7 +74,6 @@ fn test_instrument_zero_price_rejected_on_deserialize() {
     assert!(back.is_err());
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_instrument_zero_volume_accepted_on_deserialize() {
     let back: Result<Instrument, _> = serde_json::from_str(r#"{"price":"1","daily_volume":"0"}"#);
@@ -298,7 +295,6 @@ fn test_try_from_positive_nonzero_returns_ok() {
     );
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_try_from_positive_zero_returns_out_of_bounds() {
     assert_eq!(
@@ -436,7 +432,6 @@ fn test_eq_and_ord_with_positive_both_directions() {
     assert!(Positive::ONE < s);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_strictly_positive_greater_than_positive_zero() {
     assert!(StrictlyPositive::MIN > Positive::ZERO);
@@ -621,7 +616,6 @@ fn test_checked_add_positive_overflow_returns_arithmetic_error() {
     ));
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_add_positive_zero_keeps_value() {
     assert_eq!(
@@ -666,18 +660,10 @@ fn test_sub_strict_strict_returns_positive() {
     assert_eq!(diff, Positive::TWO);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_sub_equal_values_returns_positive_zero() {
     let diff: Positive = StrictlyPositive::TWO - StrictlyPositive::TWO;
     assert!(diff.is_zero());
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-#[should_panic(expected = "invariant broken in sub")]
-fn test_sub_equal_values_panics_under_non_zero() {
-    let _ = StrictlyPositive::TWO - StrictlyPositive::TWO;
 }
 
 #[test]
@@ -771,7 +757,6 @@ fn test_mul_strict_positive_both_directions_returns_positive() {
     );
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_mul_by_positive_zero_returns_zero() {
     let a: Positive = StrictlyPositive::TWO * Positive::ZERO;
@@ -866,7 +851,6 @@ fn test_div_strict_by_positive_returns_positive() {
     );
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_checked_div_positive_zero_divisor_returns_arithmetic_error() {
     assert!(matches!(
@@ -875,7 +859,6 @@ fn test_checked_div_positive_zero_divisor_returns_arithmetic_error() {
     ));
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 #[should_panic(expected = "invariant broken in div")]
 fn test_div_strict_by_positive_zero_panics() {
@@ -888,7 +871,6 @@ fn test_div_positive_by_strict_returns_positive() {
     assert_eq!(q, Positive::THREE);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_div_positive_zero_by_strict_returns_zero() {
     let q: Positive = Positive::ZERO / StrictlyPositive::TWO;

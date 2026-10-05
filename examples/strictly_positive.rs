@@ -32,7 +32,7 @@ fn main() {
     let json = serde_json::to_string(&instrument).unwrap();
     println!("JSON:       {json}");
 
-    // Zero is rejected, regardless of the `non-zero` feature.
+    // Zero is rejected.
     println!("\n--- Construction ---");
     println!("strict_pos!(0.0)  = {:?}", strict_pos!(0.0));
     println!("strict_pos!(-1.0) = {:?}", strict_pos!(-1.0));

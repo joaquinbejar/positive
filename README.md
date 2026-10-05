@@ -29,7 +29,6 @@ invalid or meaningless, such as prices, quantities, volatilities, and other posi
 
 - **Type Safety**: Compile-time and runtime guarantees that values are positive
 - **Strictly Positive Values**: [`StrictlyPositive`] (> 0) next to `Positive` (>= 0), always available
-- **Non-Zero Mode (deprecated)**: the `non-zero` feature flag; use [`StrictlyPositive`] instead
 - **Decimal Precision**: Built on [`rust_decimal`](https://crates.io/crates/rust_decimal) for accurate financial calculations
 - **Rich API**: Comprehensive arithmetic operations, conversions, and mathematical utilities
 - **Predefined Constants**: Common numeric values (0-10, multiples of 5/100/1000, PI, E, etc.)
@@ -46,18 +45,16 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-positive = "0.7"
+positive = "0.8"
 ```
 
-Strictly positive values need no feature: use [`StrictlyPositive`]. The
-`non-zero` feature is **deprecated** (see
-[Deprecated: the `non-zero` feature](#deprecated-the-non-zero-feature)).
+Strictly positive values need no feature: use [`StrictlyPositive`].
 
 To enable OpenAPI schema support:
 
 ```toml
 [dependencies]
-positive = { version = "0.7", features = ["utoipa"] }
+positive = { version = "0.8", features = ["utoipa"] }
 ```
 
 ### Quick Start
@@ -281,27 +278,22 @@ assert!(instrument.price.checked_sub(&instrument.price).is_err());
 Every operator that returns a `StrictlyPositive` has a `checked_*`
 counterpart. There is no `std::iter::Sum` impl, because an empty sum is
 zero; use [`StrictlyPositive::checked_sum`]. Serialisation uses the same
-exact decimal string as `Positive`, and deserialising `0` fails under every
-feature configuration.
+exact decimal string as `Positive`, and deserialising `0` fails.
 
-### Deprecated: the `non-zero` feature
+### Removed in 0.8.0: the `non-zero` feature
 
-The `non-zero` feature is deprecated and will be removed in a future minor
-release. It changes what `Positive` means (from `>= 0` to `> 0`) instead of
-adding a type, which makes it non-additive: Cargo unifies features across
-the whole dependency graph, so if any crate in your build enables
-`non-zero`, every `Positive` in the build becomes strictly positive,
-including in crates that rely on zero being valid.
+The `non-zero` feature, deprecated in 0.7.1, was removed in 0.8.0. It
+changed what `Positive` meant instead of adding a type, so through Cargo
+feature unification any dependency could silently make every `Positive`
+in a build strictly positive. Enabling it now fails with an unknown-feature
+error, so the break is loud rather than silent.
 
-To migrate, drop the feature and use [`StrictlyPositive`] wherever you need
-`> 0`, keeping `Positive` where zero is valid:
+To migrate:
 
-```toml
-# Before
-positive = { version = "0.7", features = ["non-zero"] }
-# After
-positive = "0.7"
-```
+- Drop `features = ["non-zero"]` from your `Cargo.toml`.
+- Use [`StrictlyPositive`] wherever you need `> 0`.
+- `Positive` accepts zero again, `Positive::ZERO` and `constants::ZERO`
+  are always available, and `Positive::default()` is zero.
 
 ```rust
 use positive::{StrictlyPositive, strict_pos};
@@ -340,10 +332,9 @@ without a wildcard arm:
 - `InvalidPrecision` - A decimal precision outside the range `Decimal` supports
 
 `OutOfBounds` carries exact `Decimal` values for the offending input and
-both bounds, so no precision is lost in the diagnostic. For
-[`StrictlyPositive`], and for `Positive` under the deprecated `non-zero`
-feature, the reported minimum is `1e-28`, the smallest strictly positive
-`Decimal`.
+both bounds, so no precision is lost in the diagnostic. For `Positive` the
+reported minimum is `0`; for [`StrictlyPositive`] it is `1e-28`, the
+smallest strictly positive `Decimal`.
 
 Parsing follows the same contract — `FromStr` fails with a `PositiveError`
 that preserves the offending input:
@@ -386,7 +377,7 @@ assert_eq!(back.to_dec(), exact);
 - **Lossless for every representable value**, including 28-digit fractions,
   integers above `i64::MAX`, and `Positive::MAX`.
 - **Validation on the way in**: the positivity invariant is enforced on
-  deserialisation, so the `non-zero` feature rejects zero there too.
+  deserialisation, so negative values are rejected.
 - **Non-self-describing formats** (bincode, postcard) are supported: the
   implementation asks for a string rather than relying on
   `deserialize_any`, which such formats cannot provide.

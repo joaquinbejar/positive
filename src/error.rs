@@ -31,9 +31,9 @@
 //! [`PositiveError::OutOfBounds`] carries `Decimal` values for the offending
 //! input and both bounds. Projecting them through `f64` — as previous versions
 //! did — silently rounded the very value the caller needed to diagnose, and
-//! could not represent the true bounds at all: under the `non-zero` feature the
-//! smallest permitted value is `1e-28`, which is far below `f64::MIN_POSITIVE`
-//! in decimal terms and is not a binary-representable float.
+//! could not represent the true bounds at all: the smallest permitted
+//! [`StrictlyPositive`](crate::StrictlyPositive) value is `1e-28`, which is not
+//! a binary-representable float.
 //!
 //! [`PositiveError::InvalidValue`] carries the offending input rendered as a
 //! `String`, because the inputs it reports on (`NaN`, `±inf`, arbitrary text)
@@ -114,9 +114,10 @@ pub enum PositiveError {
 
     /// Error when a decimal value falls outside the permitted range.
     ///
-    /// All three fields are exact `Decimal` values. `min` reflects the active
-    /// feature configuration: `0` by default, and `1e-28` — the smallest
-    /// strictly positive `Decimal` — under the `non-zero` feature.
+    /// All three fields are exact `Decimal` values. `min` is the minimum of
+    /// the type being built: `0` for [`Positive`](crate::Positive), and
+    /// `1e-28` (the smallest strictly positive `Decimal`) for
+    /// [`StrictlyPositive`](crate::StrictlyPositive).
     #[error("value {value} is out of bounds (min: {min}, max: {max})")]
     OutOfBounds {
         /// The value that is out of bounds.

@@ -40,7 +40,7 @@ Serde conventions:
 
 - `Positive` wraps `rust_decimal::Decimal`. The inner field is **private** — this is the whole point of the type. Never expose it, never add a `pub` accessor that returns `&mut Decimal`.
 - Constructors: `Positive::new()` / `Positive::new_decimal()` returning `Result<Self, PositiveError>`. Variants via macros: `pos!` (Result), `pos_or_panic!` (panics on invalid input — only for tests and examples), `spos!` (Option).
-- With the `non-zero` feature: values must be strictly `> 0`. Without it: values are `>= 0`. Construction must enforce this invariant in every path.
+- `Positive` values are `>= 0`; `StrictlyPositive` values are strictly `> 0`. Construction must enforce the relevant invariant in every path.
 - NEVER let a caller construct a `Positive` that violates the invariant. All conversions from `f64`, `i64`, `u64`, `&str`, `Decimal` must validate.
 - Use `rust_decimal::Decimal` exclusively for the underlying representation. No `f64` storage.
 
@@ -51,7 +51,7 @@ Serde conventions:
 - ALL arithmetic on the underlying `Decimal`: use `checked_add`, `checked_sub`, `checked_mul`, `checked_div`.
 - NEVER use `saturating_*` or `wrapping_*` — they silently hide overflows, which is catastrophic in financial math.
 - `checked_*` methods on `Positive` must return `Result<Positive, PositiveError>` and surface overflow as `ArithmeticError`. The operator overloads (`+`, `-`, `*`, `/`) must panic on overflow/underflow, but only after the checked path exists so callers can opt into the non-panicking form.
-- Subtraction must preserve the `Positive` invariant — returning an error (or panicking from the operator) if the result would be negative (or zero under the `non-zero` feature).
+- Subtraction must preserve the `Positive` invariant — returning an error (or panicking from the operator) if the result would be negative.
 - Every division: explicitly choose and document rounding (`RoundingStrategy::MidpointNearestEven`, truncate, etc.). Division by zero must return `ArithmeticError`, never panic silently.
 
 ---
@@ -95,7 +95,6 @@ Serde conventions:
 ## Feature Flags
 
 - `default = []` — keep the default surface minimal and cheap.
-- `non-zero` — changes the invariant from `>= 0` to `> 0`. Every constructor and arithmetic method must respect it. Tests must run under both modes where applicable.
 - `utoipa` — optional, behind `dep:utoipa`. Never make the core depend on an optional dep.
 - Adding a new feature requires explicit user approval and a note in `README.md` and `src/lib.rs`.
 
@@ -124,14 +123,13 @@ This is a library, not a service. Do NOT pull in a logging framework by default.
 
 - Unit tests in the same file (`#[cfg(test)] mod tests`) or in `src/tests.rs` for cross-cutting tests.
 - Integration tests in `tests/` for the public API surface.
-- Every test covers both the happy path and all documented error cases, including the invariant: zero handling under both default and `non-zero` modes, overflow, underflow (subtraction going negative), division by zero.
+- Every test covers both the happy path and all documented error cases, including the invariant: zero handling (accepted by `Positive`, rejected by `StrictlyPositive`), overflow, underflow (subtraction going negative), division by zero.
 - Use `rust_decimal_macros::dec!` for readable decimal literals in tests.
 - Name tests as `test_<unit>_<scenario>_<expected>`, e.g., `test_positive_new_negative_returns_out_of_bounds`.
 - Run the full suite under both feature configurations when you touch anything invariant-related:
   ```bash
   cargo test --all-features
   cargo test --no-default-features
-  cargo test --features non-zero
   ```
 
 ---
@@ -152,14 +150,13 @@ All must pass — failing any means not ready:
 - `cargo fmt --check`
 - `cargo test --all-features`
 - `cargo test --no-default-features`
-- `cargo test --features non-zero`
 - `cargo build --release` (zero warnings)
 - `cargo doc --no-deps --all-features` (zero warnings — public API docs complete)
 - No `.unwrap()` / `.expect()` / unchecked indexing in `src/` (outside `#[cfg(test)]`)
 - `#[must_use]` on all pure functions and constructors
 - `#[inline]` on small hot-path helpers, `#[cold]` on error paths
 - `rust_decimal::Decimal` underneath — no `f64` storage anywhere
-- The `Positive` invariant holds under both default and `non-zero` features
+- The `Positive` (`>= 0`) and `StrictlyPositive` (`> 0`) invariants hold in every feature configuration
 - Tests cover happy path AND all error cases
 - Doc comments on all `pub` items, with `# Errors` / `# Panics` / `# Examples` where applicable
 - `README.md` regenerated if the crate docs changed (`make readme`)

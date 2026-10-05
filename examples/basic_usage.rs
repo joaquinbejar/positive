@@ -50,7 +50,6 @@ fn main() {
     let result = a.checked_sub(&b);
     println!("a.checked_sub(&b) = {result:?}");
 
-    #[cfg(not(feature = "non-zero"))]
     #[allow(deprecated)]
     {
         // `sub_or_zero` floors at zero, and the name says so at the call site.

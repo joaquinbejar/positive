@@ -19,9 +19,9 @@ tests/            — integration tests
 examples/         — runnable examples
 ```
 
-Core invariant: `Positive` wraps a `rust_decimal::Decimal` with `inner >= 0` by default, or `inner > 0` under the `non-zero` feature. The inner field is private. Breaking this invariant is the worst possible defect in this crate.
+Core invariant: `Positive` wraps a `rust_decimal::Decimal` with `inner >= 0`; its companion `StrictlyPositive` wraps a `Positive` with `inner > 0`. The inner field is private. Breaking this invariant is the worst possible defect in this crate.
 
-Feature flags: `default = []`, `non-zero` (strictly positive), `utoipa` (OpenAPI schema support).
+Feature flags: `default = []`, `utoipa` (OpenAPI schema support).
 
 ## Authoritative sources
 
@@ -37,7 +37,7 @@ Treat `rules/global_rules.md` as the source of truth. If a change violates it, t
 When asked to validate a change (or proactively after another agent reports work), check at minimum:
 
 1. **Invariant preservation**
-   - Every constructor path (`new`, `new_decimal`, macros, `From`/`TryFrom` impls, deserialization) enforces `>= 0` (or `> 0` with `non-zero`).
+   - Every constructor path (`new`, `new_decimal`, macros, `From`/`TryFrom` impls, deserialization) enforces `>= 0` (`> 0` for `StrictlyPositive`).
    - No `pub` accessor exposes `&mut Decimal` or lets a caller bypass validation.
    - Arithmetic that could violate the invariant (subtraction, division) either returns `Result` (`checked_*`) or panics loudly via the operator overloads — never produces a negative `Positive`.
 2. **Type safety**
@@ -48,7 +48,7 @@ When asked to validate a change (or proactively after another agent reports work
 5. **Logging** — no `println!`, `eprintln!`, `dbg!`, or `log` crate calls in `src/`. A library does not log.
 6. **Compiler attributes** — `#[must_use]` on pure functions/constructors, `#[inline]` on small hot helpers, `#[cold]` on error constructors, `#[repr(transparent)]` on `Positive`.
 7. **Semver** — flag any public rename, removal, or signature change in a non-major release. `PositiveError` variants are part of the public API.
-8. **Feature flags** — changes must respect both `default` and `non-zero` modes. `utoipa` changes must not leak into the core surface.
+8. **Feature flags** — changes must work under both `default` and `--all-features`. `utoipa` changes must not leak into the core surface.
 9. **Dependencies** — flag any new crate not previously approved; new deps require explicit user approval.
 10. **Pre-submission checklist** in `rules/global_rules.md` — every item must hold, including the multi-feature test matrix.
 

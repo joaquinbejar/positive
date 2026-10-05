@@ -88,8 +88,7 @@ macro_rules! spos {
 /// expression.
 ///
 /// Returns `Ok(StrictlyPositive)` when the value is strictly greater than
-/// zero, otherwise `Err(PositiveError)`. The behaviour does not depend on the
-/// `non-zero` feature.
+/// zero, otherwise `Err(PositiveError)`.
 ///
 /// # Example
 ///

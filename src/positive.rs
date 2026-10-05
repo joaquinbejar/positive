@@ -18,7 +18,6 @@ use std::borrow::Borrow;
 use std::cmp::{Ordering, PartialEq};
 use std::fmt;
 use std::fmt::Display;
-#[cfg(not(feature = "non-zero"))]
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Sub};
 use std::str::FromStr;
@@ -28,8 +27,8 @@ use std::str::FromStr;
 /// This type encapsulates a `Decimal` value and ensures through its API that
 /// the contained value is always positive (greater than or equal to zero).
 ///
-/// When the `non-zero` feature is enabled, the value must be strictly
-/// greater than zero.
+/// For values that must be strictly greater than zero, use
+/// [`StrictlyPositive`](crate::StrictlyPositive).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -37,45 +36,25 @@ pub struct Positive(Decimal);
 
 /// Returns whether the given decimal value satisfies the positivity constraint.
 ///
-/// Without the `non-zero` feature, values >= 0 are accepted.
-/// With the `non-zero` feature, only values > 0 are accepted.
+/// Values `>= 0` are accepted.
 #[inline]
 #[must_use]
 pub fn is_valid_positive_value(value: Decimal) -> bool {
-    #[cfg(feature = "non-zero")]
-    {
-        value > Decimal::ZERO
-    }
-    #[cfg(not(feature = "non-zero"))]
-    {
-        value >= Decimal::ZERO
-    }
+    value >= Decimal::ZERO
 }
 
-/// Returns the smallest value a `Positive` may hold under the active feature
-/// configuration, as an exact `Decimal`.
+/// Returns the smallest value a `Positive` may hold, as an exact `Decimal`.
 ///
-/// Without the `non-zero` feature the minimum is `0`. With the `non-zero`
-/// feature it is `1e-28`, the smallest strictly positive value
-/// `rust_decimal::Decimal` can represent — not `f64::MIN_POSITIVE`, which is a
-/// binary float bound with no bearing on `Decimal`'s range and which earlier
-/// versions reported here incorrectly.
+/// This is always `0`.
 #[inline]
 #[must_use]
 pub(crate) fn min_bound() -> Decimal {
-    #[cfg(feature = "non-zero")]
-    {
-        Decimal::new(1, 28)
-    }
-    #[cfg(not(feature = "non-zero"))]
-    {
-        Decimal::ZERO
-    }
+    Decimal::ZERO
 }
 
 /// Returns the largest value a `Positive` may hold, as an exact `Decimal`.
 ///
-/// This is `Decimal::MAX` under every feature configuration.
+/// This is always `Decimal::MAX`.
 #[inline]
 #[must_use]
 pub(crate) fn max_bound() -> Decimal {
@@ -271,7 +250,7 @@ pub(crate) fn overflow_panic(op: &'static str) -> ! {
 
 /// Panics with a uniform message when the result of a `Positive`
 /// arithmetic operation would violate the positivity invariant
-/// (negative, or zero under the `non-zero` feature).
+/// (a negative result).
 ///
 /// Marked `#[cold]` and `#[inline(never)]` so the happy path stays lean.
 #[cold]
@@ -368,9 +347,6 @@ pub(crate) fn unwrap_or_panic(
 impl Positive {
     // Re-export constants from the constants module for backward compatibility
     /// A zero value represented as a `Positive` value.
-    ///
-    /// This constant is not available when the `non-zero` feature is enabled.
-    #[cfg(not(feature = "non-zero"))]
     pub const ZERO: Positive = crate::constants::ZERO;
     /// A value of one represented as a `Positive` value.
     pub const ONE: Positive = crate::constants::ONE;
@@ -497,8 +473,7 @@ impl Positive {
 
     /// Creates a new `Positive` value from a 64-bit floating-point number.
     ///
-    /// Without the `non-zero` feature, values >= 0 are accepted.
-    /// With the `non-zero` feature, only values > 0 are accepted.
+    /// Values `>= 0` are accepted.
     ///
     /// # Errors
     ///
@@ -507,7 +482,7 @@ impl Positive {
     /// outside the range `Decimal` can represent, and
     /// [`PositiveError::OutOfBounds`] when it converts cleanly but breaks the
     /// positivity invariant. The `OutOfBounds` bounds are exact `Decimal`
-    /// values reflecting the active feature configuration.
+    /// values: `0` and `Decimal::MAX`.
     ///
     /// # Examples
     ///
@@ -548,8 +523,7 @@ impl Positive {
 
     /// Creates a new `Positive` value directly from a `Decimal`.
     ///
-    /// Without the `non-zero` feature, values >= 0 are accepted.
-    /// With the `non-zero` feature, only values > 0 are accepted.
+    /// Values `>= 0` are accepted.
     ///
     /// # Errors
     ///
@@ -878,11 +852,9 @@ impl Positive {
     ///
     /// # Panics
     ///
-    /// Panics when the floored result would break the positivity invariant.
-    /// Under the `non-zero` feature this includes every value below one, whose
-    /// floor is zero — for example `0.5`. Without that feature this method
-    /// cannot panic. Use [`Positive::checked_floor`] for the non-panicking
-    /// form.
+    /// The floor of a non-negative value is non-negative, so this method
+    /// cannot panic in practice. [`Positive::checked_floor`] is the
+    /// `Result`-returning form.
     ///
     /// # Examples
     ///
@@ -1030,8 +1002,7 @@ impl Positive {
     ///
     /// Returns [`PositiveError::ArithmeticError`] when the power overflows and
     /// [`PositiveError::OutOfBounds`] when the result would break the
-    /// positivity invariant — under the `non-zero` feature, when it underflows
-    /// to zero.
+    /// positivity invariant, which cannot happen for a non-negative base.
     ///
     /// # Examples
     ///
@@ -1105,10 +1076,9 @@ impl Positive {
     ///
     /// # Panics
     ///
-    /// Panics when the rounded result would break the positivity invariant.
-    /// Under the `non-zero` feature this includes every value below `0.5`,
-    /// which rounds to zero. Without that feature this method cannot panic.
-    /// Use [`Positive::checked_round`] for the non-panicking form.
+    /// Rounding a non-negative value yields a non-negative value, so this
+    /// method cannot panic in practice. [`Positive::checked_round`] is the
+    /// `Result`-returning form.
     ///
     /// # Examples
     ///
@@ -1146,15 +1116,13 @@ impl Positive {
     ///
     /// The magnitude is computed entirely in `Decimal`. Routing it through
     /// `Positive` — as earlier versions did — meant the intermediate magnitude
-    /// was zero for every input below ten, which is invalid under the
-    /// `non-zero` feature, and that the final scaling went through
-    /// `magnitude.to_u64()`, which cannot represent the negative magnitude of
-    /// an input below one.
+    /// was clamped at zero for every input below ten, and that the final
+    /// scaling went through `magnitude.to_u64()`, which cannot represent the
+    /// negative magnitude of an input below one.
     ///
     /// A zero input maps to zero: it is already the nicest number at its own
     /// magnitude, and `log10(0)` is undefined so there is nothing else to
-    /// compute. Under the `non-zero` feature zero is not constructible, so
-    /// that case cannot arise.
+    /// compute.
     ///
     /// # Panics
     ///
@@ -1304,8 +1272,7 @@ impl Positive {
     /// # Panics
     ///
     /// Panics for a zero input, for which the natural logarithm is undefined.
-    /// Zero is not constructible under the `non-zero` feature, so this cannot
-    /// happen there. Use [`Positive::checked_ln`] for the non-panicking form.
+    /// Use [`Positive::checked_ln`] for the non-panicking form.
     ///
     /// # Examples
     ///
@@ -1403,11 +1370,9 @@ impl Positive {
     ///
     /// # Panics
     ///
-    /// Panics when the rounded result would break the positivity invariant.
-    /// Under the `non-zero` feature this includes any value that rounds to
-    /// zero at the requested scale — for example `0.5` at `round_to(0)`.
-    /// Without that feature this method cannot panic. Use
-    /// [`Positive::checked_round_to`] for the non-panicking form.
+    /// Rounding a non-negative value yields a non-negative value, so this
+    /// method cannot panic in practice. [`Positive::checked_round_to`] is the
+    /// `Result`-returning form.
     ///
     /// # Examples
     ///
@@ -1768,9 +1733,6 @@ impl Positive {
 
     /// Subtracts a decimal value, returning zero if the result would be negative.
     ///
-    /// This method is not available when the `non-zero` feature is enabled
-    /// because the result could be zero.
-    ///
     /// # Panics
     ///
     /// Panics when the subtraction overflows `Decimal` — a strictly positive
@@ -1787,7 +1749,6 @@ impl Positive {
     /// assert_eq!(pos_or_panic!(5.0).sub_or_zero(&dec!(2)), pos_or_panic!(3.0));
     /// assert_eq!(pos_or_panic!(5.0).sub_or_zero(&dec!(9)), Positive::ZERO);
     /// ```
-    #[cfg(not(feature = "non-zero"))]
     #[must_use]
     #[deprecated(
         since = "0.5.1",
@@ -1867,8 +1828,8 @@ impl Positive {
     ///
     /// Returns [`PositiveError::ArithmeticError`] when the product overflows
     /// `Decimal`, and [`PositiveError::OutOfBounds`] when the result would
-    /// break the positivity invariant — which, under the `non-zero` feature,
-    /// includes a product that underflows to zero.
+    /// break the positivity invariant, which cannot happen for two
+    /// non-negative operands.
     ///
     /// # Examples
     ///
@@ -1898,7 +1859,7 @@ impl Positive {
     ///
     /// Returns [`PositiveError::ArithmeticError`] when the difference
     /// overflows `Decimal`, and [`PositiveError::OutOfBounds`] when the result
-    /// would be negative (or zero under the `non-zero` feature).
+    /// would be negative.
     ///
     /// # Examples
     ///
@@ -1918,9 +1879,6 @@ impl Positive {
     }
 
     /// Saturating subtraction that returns ZERO instead of negative.
-    ///
-    /// This method is not available when the `non-zero` feature is enabled
-    /// because the result could be zero.
     ///
     /// # Deprecated
     ///
@@ -1943,7 +1901,6 @@ impl Positive {
     ///     Positive::ZERO
     /// );
     /// ```
-    #[cfg(not(feature = "non-zero"))]
     #[deprecated(
         since = "0.6.0",
         note = "saturating arithmetic hides underflow; use `checked_sub` and handle the error, or `sub_or_zero` to floor at zero explicitly. Removal is scheduled for the release after 0.6.0"
@@ -2169,10 +2126,8 @@ impl Positive {
     /// overflows `Decimal`, without consuming the rest of the iterator.
     ///
     /// Returns [`PositiveError::OutOfBounds`] when the total breaks the
-    /// positivity invariant. Under the `non-zero` feature this includes the
-    /// empty iterator, whose sum is zero: there is no valid `Positive`
-    /// identity element, so an empty sum has no answer and is reported rather
-    /// than invented.
+    /// positivity invariant, which cannot happen for non-negative terms. An
+    /// empty iterator sums to [`Positive::ZERO`].
     ///
     /// # Examples
     ///
@@ -2454,10 +2409,9 @@ impl Positive {
     /// to define `Positive` constants in `const` context.
     ///
     /// The invariant is enforced by the callers: every constant in
-    /// `crate::constants` is a literal that is non-negative — strictly
-    /// positive under the `non-zero` feature — and each is audited at the
-    /// point of definition. Keeping this crate-private is what lets the
-    /// constants exist at compile time without exposing an unchecked
+    /// `crate::constants` is a literal that is non-negative, and each is
+    /// audited at the point of definition. Keeping this crate-private is what
+    /// lets the constants exist at compile time without exposing an unchecked
     /// constructor to callers, which is why the public `new_unchecked` could
     /// be removed outright rather than replaced.
     #[inline]
@@ -2698,8 +2652,8 @@ impl TryFrom<usize> for Positive {
     ///
     /// # Errors
     ///
-    /// Returns [`PositiveError::OutOfBounds`] when the value breaks the
-    /// positivity invariant, which under the `non-zero` feature means zero.
+    /// Every `usize` is non-negative and fits in `Decimal`, so this conversion
+    /// never fails in practice; the `Result` is kept for API stability.
     ///
     /// # Examples
     ///
@@ -2986,8 +2940,7 @@ impl<'de> Deserialize<'de> for Positive {
     /// # Errors
     ///
     /// Fails when the input is not a valid decimal, or when the value breaks
-    /// the positivity invariant — which under the `non-zero` feature includes
-    /// zero.
+    /// the positivity invariant (a negative value).
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -3121,8 +3074,8 @@ impl Sub for Positive {
     type Output = Positive;
     /// # Panics
     ///
-    /// Panics on overflow, or when the difference would be negative — zero
-    /// under the `non-zero` feature. See [`Positive::checked_sub`].
+    /// Panics on overflow, or when the difference would be negative. See
+    /// [`Positive::checked_sub`].
     #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
         unwrap_or_panic(self.checked_sub(&rhs), "sub")
@@ -3133,9 +3086,8 @@ impl Mul for Positive {
     type Output = Positive;
     /// # Panics
     ///
-    /// Panics on overflow, and — under the `non-zero` feature — when the
-    /// product underflows to zero, as `1e-28 * 1e-28` does. See
-    /// [`Positive::checked_mul`] for the non-panicking form.
+    /// Panics on overflow. See [`Positive::checked_mul`] for the
+    /// non-panicking form.
     #[inline]
     fn mul(self, other: Positive) -> Positive {
         unwrap_or_panic(self.checked_mul(&other), "mul")
@@ -3458,17 +3410,9 @@ impl From<&Positive> for Decimal {
     }
 }
 
-#[cfg(not(feature = "non-zero"))]
 impl Default for Positive {
     fn default() -> Self {
         Positive::ZERO
-    }
-}
-
-#[cfg(feature = "non-zero")]
-impl Default for Positive {
-    fn default() -> Self {
-        Positive::ONE
     }
 }
 
@@ -3531,10 +3475,9 @@ impl RelativeEq for Positive {
 // observe that overflow and would have replaced a financial total with zero if
 // it ever had.
 //
-// Without the `non-zero` feature the sum of non-negative values is itself
-// non-negative, so overflow is the only reachable failure.
+// The sum of non-negative values is itself non-negative, so overflow is the
+// only reachable failure.
 
-#[cfg(not(feature = "non-zero"))]
 impl Sum for Positive {
     /// Sums an iterator of `Positive` values.
     ///
@@ -3551,7 +3494,6 @@ impl Sum for Positive {
     }
 }
 
-#[cfg(not(feature = "non-zero"))]
 impl<'a> Sum<&'a Positive> for Positive {
     /// Sums an iterator of `&Positive` values.
     ///
