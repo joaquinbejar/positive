@@ -83,3 +83,54 @@ macro_rules! spos {
         $crate::Positive::new($val).ok()
     };
 }
+
+/// Macro for creating a `StrictlyPositive` value (`> 0`) from an `f64`
+/// expression.
+///
+/// Returns `Ok(StrictlyPositive)` when the value is strictly greater than
+/// zero, otherwise `Err(PositiveError)`. The behaviour does not depend on the
+/// `non-zero` feature.
+///
+/// # Example
+///
+/// ```rust
+/// use positive::strict_pos;
+///
+/// assert!(strict_pos!(5.0).is_ok());
+/// assert!(strict_pos!(0.0).is_err());
+/// assert!(strict_pos!(-5.0).is_err());
+/// ```
+#[macro_export]
+macro_rules! strict_pos {
+    ($val:expr) => {
+        $crate::StrictlyPositive::new($val)
+    };
+}
+
+/// Macro for creating a `StrictlyPositive` value that panics on invalid
+/// input.
+///
+/// Intended for tests, examples and literals, like [`pos_or_panic!`]. Use
+/// [`strict_pos!`] or `StrictlyPositive::new` on production paths.
+///
+/// # Panics
+///
+/// Panics when the value is zero, negative, `NaN`, infinite or not
+/// representable as a `Decimal`.
+///
+/// # Example
+///
+/// ```rust
+/// use positive::strict_pos_or_panic;
+///
+/// let value = strict_pos_or_panic!(5.0);
+/// assert_eq!(value.to_f64(), 5.0);
+/// ```
+#[macro_export]
+macro_rules! strict_pos_or_panic {
+    ($val:expr) => {
+        // Panicking on invalid input is this macro's entire contract, as for
+        // `pos_or_panic!`; it is sanctioned for tests, examples and literals.
+        $crate::StrictlyPositive::new($val).expect("Failed to create StrictlyPositive value") // scan-banned: allow
+    };
+}

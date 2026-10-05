@@ -15,11 +15,15 @@
 //!
 //! This includes:
 //! - The `Positive` type and its associated macros
+//! - The `StrictlyPositive` type and its macros (`strict_pos!`, `strict_pos_or_panic!`)
 //! - Error types for handling failures
 //! - The `Decimal` type from `rust_decimal`
 //! - All predefined constants
 
 pub use crate::constants::*;
 pub use crate::error::{PositiveError, PositiveResult};
-pub use crate::{Positive, is_positive, pos, pos_or_panic, spos};
+pub use crate::{
+    Positive, StrictlyPositive, is_positive, pos, pos_or_panic, spos, strict_pos,
+    strict_pos_or_panic,
+};
 pub use rust_decimal::Decimal;

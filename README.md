@@ -19,19 +19,21 @@ A type-safe wrapper for guaranteed positive decimal values in Rust.
 ### Overview
 
 `Positive` is a Rust library that provides a type-safe wrapper around `Decimal` values,
-ensuring that the contained value is always positive. By default, values are non-negative
-(>= 0). With the `non-zero` feature enabled, values must be strictly positive (> 0).
+ensuring that the contained value is always positive. `Positive` values are non-negative
+(>= 0). Its companion type, [`StrictlyPositive`], holds values that are strictly positive
+(> 0), and the two can be used side by side in the same crate.
 This is particularly useful in financial applications where negative values would be
 invalid or meaningless, such as prices, quantities, volatilities, and other positive metrics.
 
 ### Features
 
 - **Type Safety**: Compile-time and runtime guarantees that values are positive
-- **Non-Zero Mode**: Optional `non-zero` feature flag to reject zero values (strictly > 0)
+- **Strictly Positive Values**: [`StrictlyPositive`] (> 0) next to `Positive` (>= 0), always available
+- **Non-Zero Mode (deprecated)**: the `non-zero` feature flag; use [`StrictlyPositive`] instead
 - **Decimal Precision**: Built on [`rust_decimal`](https://crates.io/crates/rust_decimal) for accurate financial calculations
 - **Rich API**: Comprehensive arithmetic operations, conversions, and mathematical utilities
 - **Predefined Constants**: Common numeric values (0-10, multiples of 5/100/1000, PI, E, etc.)
-- **Convenient Macros**: `pos!`, `pos_or_panic!`, `spos!` for easy value creation
+- **Convenient Macros**: `pos!`, `pos_or_panic!`, `spos!`, `strict_pos!`, `strict_pos_or_panic!`
 - **Prelude Module**: Simple imports with `use positive::prelude::*;`
 - **Serde Support**: Lossless serialisation as exact decimal strings, for JSON and binary formats alike
 - **Approx Support**: Approximate equality comparisons for floating-point tolerance
@@ -47,12 +49,9 @@ Add this to your `Cargo.toml`:
 positive = "0.7"
 ```
 
-To require strictly positive values (excluding zero):
-
-```toml
-[dependencies]
-positive = { version = "0.7", features = ["non-zero"] }
-```
+Strictly positive values need no feature: use [`StrictlyPositive`]. The
+`non-zero` feature is **deprecated** (see
+[Deprecated: the `non-zero` feature](#deprecated-the-non-zero-feature)).
 
 To enable OpenAPI schema support:
 
@@ -235,6 +234,88 @@ let max_val = p.max(pos_or_panic!(3.0));                 // Maximum of two value
 let formatted = p.format_fixed_places(2);       // Format with fixed decimals
 ```
 
+### StrictlyPositive
+
+[`StrictlyPositive`] is a decimal that is always greater than zero. It is
+always available, independent of any feature flag, so a single type can
+hold a price that must never be zero next to a volume that may be:
+
+```rust
+use positive::prelude::*;
+use rust_decimal_macros::dec;
+
+struct Instrument {
+    price: StrictlyPositive, // > 0
+    daily_volume: Positive,  // >= 0
+}
+
+let instrument = Instrument {
+    price: StrictlyPositive::new_decimal(dec!(101.25))?,
+    daily_volume: Positive::new_decimal(dec!(1500))?,
+};
+
+// Zero and negative values are rejected with `OutOfBounds`, whose
+// minimum is `StrictlyPositive::MIN` (1e-28).
+assert!(StrictlyPositive::new_decimal(dec!(0)).is_err());
+assert!(strict_pos!(0.0).is_err());
+
+// Results keep the strict type only where they are guaranteed > 0.
+let with_fee: StrictlyPositive = instrument.price + Positive::ONE;  // S + P -> S
+let notional: Positive = instrument.price * instrument.daily_volume; // S * P -> P
+let spread: Positive = with_fee - instrument.price;                  // S - S -> P
+assert_eq!(spread, Positive::ONE);
+assert!(notional > dec!(0));
+
+// `checked_sub` keeps the strict type and reports a non-positive result.
+assert!(instrument.price.checked_sub(&instrument.price).is_err());
+```
+
+| Operation | Result |
+|---|---|
+| `S + S`, `S + P`, `P + S` | `S` |
+| `S * S`, `S / S` | `S`; the `checked_*` form returns `Err` if `Decimal` rounding underflows to zero |
+| `S * P`, `P * S`, `S / P`, `P / S` | `P` |
+| `S - S` | `P` (the operator); `checked_sub` returns `Result<S, _>` |
+| `ln`, `log10` | `Decimal`, with no zero edge case |
+
+Every operator that returns a `StrictlyPositive` has a `checked_*`
+counterpart. There is no `std::iter::Sum` impl, because an empty sum is
+zero; use [`StrictlyPositive::checked_sum`]. Serialisation uses the same
+exact decimal string as `Positive`, and deserialising `0` fails under every
+feature configuration.
+
+### Deprecated: the `non-zero` feature
+
+The `non-zero` feature is deprecated and will be removed in a future minor
+release. It changes what `Positive` means (from `>= 0` to `> 0`) instead of
+adding a type, which makes it non-additive: Cargo unifies features across
+the whole dependency graph, so if any crate in your build enables
+`non-zero`, every `Positive` in the build becomes strictly positive,
+including in crates that rely on zero being valid.
+
+To migrate, drop the feature and use [`StrictlyPositive`] wherever you need
+`> 0`, keeping `Positive` where zero is valid:
+
+```toml
+# Before
+positive = { version = "0.7", features = ["non-zero"] }
+# After
+positive = "0.7"
+```
+
+```rust
+use positive::{StrictlyPositive, strict_pos};
+
+// Before (with `non-zero`): let price = pos!(10.0)?;   // Positive, > 0
+// After:
+let price: Result<StrictlyPositive, _> = strict_pos!(10.0);
+assert!(price.is_ok());
+```
+
+`StrictlyPositive` mirrors the commonly used `Positive` API: constructors,
+`checked_*` arithmetic, the rounding and power functions, conversions and
+constants. Anything else is one `to_positive()` away.
+
 ### Error Handling
 
 The library provides `PositiveError` for comprehensive error handling:
@@ -259,9 +340,10 @@ without a wildcard arm:
 - `InvalidPrecision` - A decimal precision outside the range `Decimal` supports
 
 `OutOfBounds` carries exact `Decimal` values for the offending input and
-both bounds, so no precision is lost in the diagnostic. Under the
-`non-zero` feature the reported minimum is `1e-28`, the smallest strictly
-positive `Decimal`.
+both bounds, so no precision is lost in the diagnostic. For
+[`StrictlyPositive`], and for `Positive` under the deprecated `non-zero`
+feature, the reported minimum is `1e-28`, the smallest strictly positive
+`Decimal`.
 
 Parsing follows the same contract — `FromStr` fails with a `PositiveError`
 that preserves the offending input:
