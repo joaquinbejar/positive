@@ -1370,9 +1370,10 @@ impl Positive {
     ///
     /// # Panics
     ///
-    /// Rounding a non-negative value yields a non-negative value, so this
-    /// method cannot panic in practice. [`Positive::checked_round_to`] is the
-    /// `Result`-returning form.
+    /// Panics when `decimal_places` exceeds 28, the largest scale `Decimal`
+    /// supports. Rounding a non-negative value always yields a non-negative
+    /// value, so the invariant itself cannot fail. Use
+    /// [`Positive::checked_round_to`] for the non-panicking form.
     ///
     /// # Examples
     ///
