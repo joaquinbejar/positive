@@ -355,7 +355,9 @@ fn test_try_from_u64() {
 #[test]
 fn test_try_from_usize_is_exact() {
     assert_eq!(StrictlyPositive::try_from(0usize), Err(strict_oob(dec!(0))));
-    let value = 9_007_199_254_740_993usize;
+    // `usize::MAX` is portable across 32/64-bit targets; on 64-bit it is
+    // also an integer that `f64` cannot represent exactly.
+    let value = usize::MAX;
     assert!(
         matches!(StrictlyPositive::try_from(value), Ok(v) if v.to_dec() == Decimal::from(value))
     );
