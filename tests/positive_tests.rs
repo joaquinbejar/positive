@@ -11,18 +11,9 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::str::FromStr;
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_positive_decimal_creation() {
     assert!(Positive::new_decimal(Decimal::ZERO).is_ok());
-    assert!(Positive::new_decimal(Decimal::ONE).is_ok());
-    assert!(Positive::new_decimal(Decimal::NEGATIVE_ONE).is_err());
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_positive_decimal_creation_non_zero() {
-    assert!(Positive::new_decimal(Decimal::ZERO).is_err());
     assert!(Positive::new_decimal(Decimal::ONE).is_ok());
     assert!(Positive::new_decimal(Decimal::NEGATIVE_ONE).is_err());
 }
@@ -107,16 +98,9 @@ fn test_positive_decimal_mul_f64() {
     assert_eq!((a * 3.0), 6.0);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_positive_decimal_default() {
     assert_eq!(Positive::default().value(), Decimal::ZERO);
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_positive_decimal_default_non_zero() {
-    assert_eq!(Positive::default().value(), Decimal::ONE);
 }
 
 #[test]
@@ -126,16 +110,9 @@ fn test_decimal_div_positive_decimal() {
     assert_eq!(a / b, dec!(3.0));
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_constants() {
     assert_eq!(Positive::ZERO.value(), Decimal::ZERO);
-    assert_eq!(Positive::ONE.value(), Decimal::ONE);
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_constants_non_zero() {
     assert_eq!(Positive::ONE.value(), Decimal::ONE);
 }
 
@@ -180,7 +157,6 @@ fn test_positive_decimal_floor() {
     assert_eq!(a.floor().value(), dec!(1.0));
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_sum_owned_values() {
     let values = vec![pos_or_panic!(1.0), pos_or_panic!(2.0), pos_or_panic!(3.0)];
@@ -188,7 +164,6 @@ fn test_sum_owned_values() {
     assert_eq!(sum.to_f64(), 6.0);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_sum_referenced_values() {
     let values = [pos_or_panic!(1.0), pos_or_panic!(2.0), pos_or_panic!(3.0)];
@@ -196,7 +171,6 @@ fn test_sum_referenced_values() {
     assert_eq!(sum.to_f64(), 6.0);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_sum_empty_iterator() {
     let values: Vec<Positive> = vec![];
@@ -223,7 +197,6 @@ fn test_checked_sub_failure() {
 
 /// `saturating_sub` is deprecated but still shipped in 0.6.0, so its behaviour
 /// stays covered until it is removed in the following release.
-#[cfg(not(feature = "non-zero"))]
 #[test]
 #[allow(deprecated)]
 fn test_saturating_sub() {
@@ -245,7 +218,6 @@ fn test_checked_div_success() {
     assert_eq!(result.unwrap().to_f64(), 3.0);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_checked_div_by_zero() {
     let a = pos_or_panic!(6.0);
@@ -261,18 +233,9 @@ fn test_pos_positive_values() {
     assert_eq!(pos_or_panic!(0.1).value(), Decimal::new(1, 1));
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_pos_zero() {
     assert_eq!(Positive::ZERO, Positive::ZERO);
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_zero_is_rejected() {
-    assert!(Positive::new(0.0).is_err());
-    assert!(pos!(0.0).is_err());
-    assert!(spos!(0.0).is_none());
 }
 
 #[test]
@@ -370,25 +333,12 @@ fn test_positive_roundtrip() {
     assert_eq!(original, deserialized);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_positive_zero_deserialization() {
     let json = "0";
     let result = serde_json::from_str::<Positive>(json);
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), Positive::ZERO);
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_positive_zero_deserialization_non_zero() {
-    let json = "0";
-    let result = serde_json::from_str::<Positive>(json);
-    assert!(result.is_err());
-
-    let json_float = "0.0";
-    let result = serde_json::from_str::<Positive>(json_float);
-    assert!(result.is_err());
 }
 
 #[test]
@@ -498,20 +448,12 @@ fn test_round_to() {
     assert_eq!(value.round_to(2).to_f64(), 1.23);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_is_zero() {
     assert!(Positive::ZERO.is_zero());
     assert!(!pos_or_panic!(1.0).is_zero());
 }
 
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_is_zero_non_zero() {
-    assert!(!pos_or_panic!(1.0).is_zero());
-}
-
-#[cfg(not(feature = "non-zero"))]
 #[test]
 // sub_or_zero is deprecated but still shipped, so its behaviour stays tested
 // until the removal lands.
@@ -719,7 +661,6 @@ fn test_is_multiple_edge_cases() {
     assert!(value2.is_multiple(2.0));
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_is_multiple_of_with_zero() {
     let value = pos_or_panic!(10.0);
@@ -1575,7 +1516,6 @@ fn test_checked_div_with_strategy_ok() {
     assert_eq!(r.to_dec(), dec!(3.5));
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_checked_div_with_strategy_zero_divisor() {
     use rust_decimal_macros::dec;
@@ -1588,20 +1528,6 @@ fn test_checked_div_with_strategy_zero_divisor() {
         err,
         positive::PositiveError::ArithmeticError { .. }
     ));
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_checked_div_with_strategy_positive_divisor() {
-    use rust_decimal_macros::dec;
-    // Under `non-zero` a zero divisor cannot be constructed; exercise
-    // the non-zero happy path instead.
-    let a = positive::Positive::new_decimal(dec!(7)).expect("ok");
-    let b = positive::Positive::ONE;
-    let r = a
-        .checked_div_with_strategy(&b, rust_decimal::RoundingStrategy::ToZero)
-        .expect("ok");
-    assert_eq!(r.to_dec(), dec!(7));
 }
 
 #[test]
@@ -1700,27 +1626,11 @@ fn test_out_of_bounds_preserves_decimal_min_exactly() {
     }
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
-fn test_out_of_bounds_min_is_zero_by_default() {
+fn test_out_of_bounds_min_is_zero() {
     let err = Positive::new_decimal(Decimal::NEGATIVE_ONE).unwrap_err();
     match err {
         PositiveError::OutOfBounds { min, .. } => assert_eq!(min, Decimal::ZERO),
-        other => panic!("expected OutOfBounds, got {other:?}"),
-    }
-}
-
-/// Under `non-zero` the smallest permitted value is `1e-28` — the smallest
-/// strictly positive `Decimal` — not `f64::MIN_POSITIVE`.
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_out_of_bounds_min_is_smallest_decimal_under_non_zero() {
-    let err = Positive::new_decimal(Decimal::ZERO).unwrap_err();
-    match err {
-        PositiveError::OutOfBounds { min, .. } => {
-            assert_eq!(min, Decimal::new(1, 28));
-            assert!(Positive::new_decimal(min).is_ok());
-        }
         other => panic!("expected OutOfBounds, got {other:?}"),
     }
 }
@@ -1856,16 +1766,6 @@ fn test_checked_sub_negative_result_is_out_of_bounds() {
     assert!(matches!(err, PositiveError::OutOfBounds { .. }));
 }
 
-/// Under `non-zero`, a product that underflows to zero must be reported rather
-/// than returned as a `Positive(0)`.
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_checked_mul_underflow_to_zero_is_out_of_bounds() {
-    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
-    let err = tiny.checked_mul(&tiny).unwrap_err();
-    assert!(matches!(err, PositiveError::OutOfBounds { .. }));
-}
-
 // --- mixed Decimal checked operators ---
 
 #[test]
@@ -1964,7 +1864,6 @@ fn test_sub_or_none_cannot_panic_on_overflow() {
 /// An overflowing difference is not a negative one: flooring it at zero
 /// would silently corrupt the result, so it panics like the other
 /// non-checked arithmetic wrappers (issue #90 review).
-#[cfg(not(feature = "non-zero"))]
 #[test]
 #[should_panic(expected = "Positive arithmetic overflow in sub_or_zero")]
 #[allow(deprecated)]
@@ -1975,7 +1874,6 @@ fn test_sub_or_zero_panics_on_overflow_instead_of_flooring() {
 
 /// The documented floor still applies to genuine negative-or-equal
 /// differences.
-#[cfg(not(feature = "non-zero"))]
 #[test]
 #[allow(deprecated)]
 fn test_sub_or_zero_still_floors_proven_negative_differences() {
@@ -1995,7 +1893,6 @@ fn test_compare_extremes_does_not_panic() {
 /// A nonzero `f64` below `Decimal`'s smallest step rounds to zero during
 /// conversion; the comparison must decide by sign instead of the rounded
 /// value, so it never reports equality with zero (issue #77 review).
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_tiny_f64_underflow_is_not_equal_to_zero() {
     use std::cmp::Ordering;
@@ -2061,102 +1958,39 @@ fn test_every_panicking_operator_has_a_checked_counterpart() {
 
 // ===== Invariant preserved on every Positive-returning path (issue #70) =====
 
-/// The headline repro: under `non-zero`, `1e-28 * 1e-28` underflows to zero.
-/// The checked API must report it rather than hand back a `Positive(0)`.
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_non_zero_multiplication_underflow_is_reported() {
-    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
-    let err = tiny.checked_mul(&tiny).unwrap_err();
-    assert!(matches!(err, PositiveError::OutOfBounds { .. }));
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-#[should_panic(expected = "Positive invariant broken in mul")]
-fn test_non_zero_multiplication_underflow_operator_panics() {
-    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
-    let _ = tiny * tiny;
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_non_zero_division_underflow_is_reported() {
-    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
-    let huge = Positive::new_decimal(Decimal::MAX).unwrap();
-    let err = tiny.checked_div(&huge).unwrap_err();
-    assert!(matches!(err, PositiveError::OutOfBounds { .. }));
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-#[should_panic(expected = "Positive invariant broken in div")]
-fn test_non_zero_division_underflow_operator_panics() {
-    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
-    let huge = Positive::new_decimal(Decimal::MAX).unwrap();
-    let _ = tiny / huge;
-}
-
 // --- rounding down to zero ---
 
-#[cfg(feature = "non-zero")]
+/// Rounding down to zero is legitimate and must return zero rather than
+/// panicking.
 #[test]
-#[should_panic(expected = "Positive invariant broken in floor")]
-fn test_non_zero_floor_to_zero_panics() {
-    let _ = pos_or_panic!(0.5).floor();
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-#[should_panic(expected = "Positive invariant broken in round")]
-fn test_non_zero_round_to_zero_panics() {
-    let _ = pos_or_panic!(0.4).round();
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-#[should_panic(expected = "Positive invariant broken in round_to")]
-fn test_non_zero_round_to_scale_zero_panics() {
-    let _ = pos_or_panic!(0.5).round_to(0);
-}
-
-/// Without `non-zero` the same calls are legitimate and must keep returning
-/// zero rather than panicking.
-#[cfg(not(feature = "non-zero"))]
-#[test]
-fn test_default_feature_rounding_to_zero_is_allowed() {
+fn test_positive_rounding_to_zero_returns_zero() {
     assert_eq!(pos_or_panic!(0.5).floor(), Positive::ZERO);
     assert_eq!(pos_or_panic!(0.4).round(), Positive::ZERO);
     assert_eq!(pos_or_panic!(0.5).round_to(0), Positive::ZERO);
 }
 
+/// Products, quotients and powers that underflow `Decimal` to zero yield a
+/// valid `Positive::ZERO` rather than an error (issue #126). Only
+/// `StrictlyPositive` rejects them.
+#[test]
+fn test_positive_underflow_to_zero_returns_zero() {
+    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
+    let huge = Positive::new_decimal(Decimal::MAX).unwrap();
+    assert_eq!(tiny.checked_mul(&tiny).unwrap(), Positive::ZERO);
+    assert_eq!(tiny * tiny, Positive::ZERO);
+    assert_eq!(tiny.checked_div(&huge).unwrap(), Positive::ZERO);
+    assert_eq!(tiny / huge, Positive::ZERO);
+    assert_eq!(tiny.checked_powu(2).unwrap(), Positive::ZERO);
+    assert_eq!(tiny.powi(2), Positive::ZERO);
+}
+
 // --- powers ---
 
-#[cfg(feature = "non-zero")]
-#[test]
-#[should_panic(expected = "Positive invariant broken in powu")]
-fn test_non_zero_powu_underflow_panics() {
-    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
-    let _ = tiny.powu(2);
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-#[should_panic(expected = "Positive invariant broken in powi")]
-fn test_non_zero_powi_underflow_panics() {
-    let tiny = Positive::new_decimal(Decimal::new(1, 28)).unwrap();
-    let _ = tiny.powi(2);
-}
-
-/// `sub_or_none` returned `Some(Positive(0))` for equal operands, which is
-/// invalid under `non-zero`.
+/// `sub_or_none` returns `Some(Positive(0))` for equal operands.
 #[test]
 fn test_sub_or_none_equal_operands() {
     let value = pos_or_panic!(5.0);
     let result = value.sub_or_none(&value.to_dec());
-    #[cfg(feature = "non-zero")]
-    assert_eq!(result, None);
-    #[cfg(not(feature = "non-zero"))]
     assert_eq!(result, Some(Positive::ZERO));
 }
 
@@ -2235,20 +2069,12 @@ fn test_checked_sum_singleton() {
     assert_eq!(Positive::checked_sum(values).unwrap(), pos_or_panic!(7.25));
 }
 
-/// The empty sum is zero, which is a valid `Positive` by default and an
-/// invalid one under `non-zero`. It must be reported either way, never
-/// invented.
+/// The empty sum is zero, which is a valid `Positive`.
 #[test]
 fn test_checked_sum_empty() {
     let values: Vec<Positive> = Vec::new();
     let result = Positive::checked_sum(values);
-    #[cfg(not(feature = "non-zero"))]
     assert_eq!(result.unwrap(), Positive::ZERO);
-    #[cfg(feature = "non-zero")]
-    assert!(matches!(
-        result.unwrap_err(),
-        PositiveError::OutOfBounds { .. }
-    ));
 }
 
 /// The case the old `Sum` could not survive: `Decimal::MAX + ONE` panicked
@@ -2277,7 +2103,6 @@ fn test_checked_sum_large_iterator() {
 }
 
 /// `Sum` must agree with `checked_sum` on every total that has one.
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_sum_trait_matches_checked_sum() {
     let values = [pos_or_panic!(1.5), pos_or_panic!(2.5), pos_or_panic!(6.0)];
@@ -2290,7 +2115,6 @@ fn test_sum_trait_matches_checked_sum() {
     assert_eq!(borrowed, checked);
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_sum_trait_empty_is_zero() {
     let values: Vec<Positive> = Vec::new();
@@ -2300,7 +2124,6 @@ fn test_sum_trait_empty_is_zero() {
 
 /// `Sum` overflowing must panic with the documented message rather than
 /// silently substituting `ZERO`, which would corrupt a financial total.
-#[cfg(not(feature = "non-zero"))]
 #[test]
 #[should_panic(expected = "Positive arithmetic overflow in sum")]
 fn test_sum_trait_overflow_panics_and_never_returns_zero() {
@@ -2308,7 +2131,6 @@ fn test_sum_trait_overflow_panics_and_never_returns_zero() {
     let _total: Positive = [max, Positive::ONE].into_iter().sum();
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 #[should_panic(expected = "Positive arithmetic overflow in sum")]
 fn test_sum_trait_ref_overflow_panics() {
@@ -2344,9 +2166,7 @@ fn test_log10_of_one_is_zero() {
     assert_eq!(Positive::ONE.checked_ln().unwrap(), Decimal::ZERO);
 }
 
-/// Zero is outside the domain of both logarithms. It is only constructible
-/// without the `non-zero` feature.
-#[cfg(not(feature = "non-zero"))]
+/// Zero is outside the domain of both logarithms.
 #[test]
 fn test_logarithms_of_zero_are_domain_errors() {
     assert!(matches!(
@@ -2359,14 +2179,12 @@ fn test_logarithms_of_zero_are_domain_errors() {
     ));
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 #[should_panic(expected = "Positive domain error in ln")]
 fn test_ln_of_zero_panics_with_domain_message() {
     let _ = Positive::ZERO.ln();
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
 #[should_panic(expected = "Positive domain error in log10")]
 fn test_log10_of_zero_panics_with_domain_message() {
@@ -2375,7 +2193,6 @@ fn test_log10_of_zero_panics_with_domain_message() {
 
 /// `round_to_nice_number` reached `log10(0)` and panicked. Zero is already the
 /// nicest number at its own magnitude.
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_round_to_nice_number_of_zero_is_zero() {
     assert_eq!(Positive::ZERO.round_to_nice_number(), Positive::ZERO);
@@ -2389,7 +2206,6 @@ fn test_round_to_nice_number_of_zero_is_zero() {
 
 /// `powi` with a zero base and a negative exponent is outside the domain; it
 /// panicked inside rust_decimal before.
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_powi_zero_base_negative_exponent_is_error() {
     assert!(matches!(
@@ -2477,25 +2293,6 @@ fn test_checked_rounding_success() {
         pos_or_panic!(1.1).checked_ceiling().unwrap(),
         pos_or_panic!(2.0)
     );
-}
-
-/// Under `non-zero`, rounding down to zero must be reported rather than
-/// panicking when the caller asks for the checked form.
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_checked_rounding_to_zero_is_out_of_bounds() {
-    assert!(matches!(
-        pos_or_panic!(0.5).checked_floor().unwrap_err(),
-        PositiveError::OutOfBounds { .. }
-    ));
-    assert!(matches!(
-        pos_or_panic!(0.4).checked_round().unwrap_err(),
-        PositiveError::OutOfBounds { .. }
-    ));
-    assert!(matches!(
-        pos_or_panic!(0.5).checked_round_to(0).unwrap_err(),
-        PositiveError::OutOfBounds { .. }
-    ));
 }
 
 /// Every panicking mathematical method must agree with its checked
@@ -2939,18 +2736,8 @@ fn test_integer_round_trip_through_positive() {
     }
 }
 
-#[cfg(feature = "non-zero")]
 #[test]
-fn test_usize_zero_is_rejected_under_non_zero() {
-    assert!(matches!(
-        Positive::try_from(0usize).unwrap_err(),
-        PositiveError::OutOfBounds { .. }
-    ));
-}
-
-#[cfg(not(feature = "non-zero"))]
-#[test]
-fn test_usize_zero_is_accepted_by_default() {
+fn test_usize_zero_is_accepted() {
     assert_eq!(Positive::try_from(0usize).unwrap(), Positive::ZERO);
 }
 
@@ -3068,18 +2855,15 @@ fn test_every_representable_value_round_trips_exactly() {
         Decimal::ONE,
     ];
     for exact in cases {
-        let Ok(value) = Positive::new_decimal(exact) else {
-            continue; // zero under non-zero
-        };
+        let value = Positive::new_decimal(exact).unwrap();
         let json = serde_json::to_string(&value).unwrap();
         let back: Positive = serde_json::from_str(&json).unwrap();
         assert_eq!(back.to_dec(), exact, "{exact} did not round-trip exactly");
     }
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
-fn test_zero_round_trips_by_default() {
+fn test_zero_round_trips() {
     let json = serde_json::to_string(&Positive::ZERO).unwrap();
     let back: Positive = serde_json::from_str(&json).unwrap();
     assert_eq!(back, Positive::ZERO);
@@ -3104,13 +2888,6 @@ fn test_deserialize_still_validates_the_invariant() {
     assert!(serde_json::from_str::<Positive>("\"-1\"").is_err());
     assert!(serde_json::from_str::<Positive>("-1").is_err());
     assert!(serde_json::from_str::<Positive>("\"not a decimal\"").is_err());
-}
-
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_deserialize_rejects_zero_under_non_zero() {
-    assert!(serde_json::from_str::<Positive>("\"0\"").is_err());
-    assert!(serde_json::from_str::<Positive>("0").is_err());
 }
 
 /// The format must not depend on `deserialize_any`, which non-self-describing
@@ -3356,9 +3133,8 @@ fn test_checked_clamp_at_decimal_extremes() {
     assert!(max.checked_clamp(max, tiny).is_err());
 }
 
-#[cfg(not(feature = "non-zero"))]
 #[test]
-fn test_checked_clamp_with_zero_bounds_by_default() {
+fn test_checked_clamp_with_zero_bounds() {
     let value = pos_or_panic!(5.0);
     assert_eq!(
         value.checked_clamp(Positive::ZERO, Positive::ONE).unwrap(),
@@ -3475,22 +3251,11 @@ fn test_all_constants_are_in_sync() {
     assert_eq!(checked, 50, "the parity table lost an entry");
 }
 
-/// `ZERO` is only valid without the `non-zero` feature, and must be gated on
-/// both access paths identically.
-#[cfg(not(feature = "non-zero"))]
+/// `ZERO` must be available, and identical, on both access paths.
 #[test]
-fn test_zero_is_available_and_in_sync_by_default() {
+fn test_zero_is_available_and_in_sync() {
     assert_eq!(Positive::ZERO, positive::constants::ZERO);
     assert_eq!(Positive::ZERO.to_dec(), Decimal::ZERO);
-}
-
-/// Under `non-zero`, `ZERO` must not exist on either path. Its absence is a
-/// compile-time property; this test records the runtime consequence, which is
-/// that zero cannot be constructed at all.
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_zero_is_unavailable_under_non_zero() {
-    assert!(Positive::new_decimal(Decimal::ZERO).is_err());
 }
 
 /// The deprecated alias must still agree with its replacement while it exists.

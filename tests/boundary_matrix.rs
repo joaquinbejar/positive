@@ -59,8 +59,7 @@ use std::str::FromStr;
 /// from its neighbours.
 fn boundary_decimals() -> Vec<(&'static str, Decimal)> {
     vec![
-        // The invariant bound itself, valid by default and rejected under
-        // `non-zero`.
+        // The invariant bound itself, which is valid.
         ("zero", Decimal::ZERO),
         // Smallest and largest representable magnitudes.
         ("smallest positive (1e-28)", Decimal::new(1, 28)),
@@ -88,7 +87,8 @@ fn boundary_decimals() -> Vec<(&'static str, Decimal)> {
     ]
 }
 
-/// The boundary vectors that are constructible under the active feature set.
+/// The boundary vectors that are constructible as a `Positive` (all of them,
+/// since every entry is `>= 0`).
 fn boundary_values() -> Vec<(&'static str, Positive)> {
     boundary_decimals()
         .into_iter()
@@ -96,7 +96,7 @@ fn boundary_values() -> Vec<(&'static str, Positive)> {
         .collect()
 }
 
-/// Values that must be rejected by every constructor under every feature set.
+/// Values that must be rejected by every constructor.
 fn invalid_decimals() -> Vec<(&'static str, Decimal)> {
     vec![
         ("negative one", Decimal::NEGATIVE_ONE),
@@ -258,7 +258,6 @@ fn test_no_checked_mathematical_api_panics_over_the_matrix() {
 
 /// Zero raised to a negative power is undefined; the checked power entry
 /// points must report it as a domain error instead of a silent zero.
-#[cfg(not(feature = "non-zero"))]
 #[test]
 fn test_zero_to_a_negative_power_is_a_domain_error() {
     assert!(matches!(
@@ -338,7 +337,7 @@ fn test_no_conversion_panics_over_the_matrix() {
 // ===========================================================================
 
 /// Whatever a `Positive`-returning API hands back must satisfy the invariant
-/// for the active feature set — or the call must panic rather than return an
+/// (`>= 0`), or the call must panic rather than return an
 /// invalid value. Both outcomes are acceptable; silently returning something
 /// invalid is not.
 #[test]
@@ -446,24 +445,6 @@ fn test_no_constructor_accepts_an_invalid_value() {
     }
 }
 
-/// Under `non-zero`, zero must be unreachable through every entry point.
-#[cfg(feature = "non-zero")]
-#[test]
-fn test_zero_is_unreachable_under_non_zero() {
-    assert!(Positive::new_decimal(Decimal::ZERO).is_err());
-    assert!(Positive::new(0.0).is_err());
-    assert!(Positive::from_str("0").is_err());
-    assert!(Positive::try_from(0usize).is_err());
-    assert!(serde_json::from_str::<Positive>("\"0\"").is_err());
-
-    // ...and no arithmetic path can produce it either.
-    let tiny = Positive::new_decimal(Decimal::new(1, 28)).expect("valid");
-    assert!(tiny.checked_mul(&tiny).is_err());
-    assert!(tiny.checked_sub(&tiny).is_err());
-    let huge = Positive::new_decimal(Decimal::MAX).expect("valid");
-    assert!(tiny.checked_div(&huge).is_err());
-}
-
 // ===========================================================================
 // 3. Serde round-trips exactly over the matrix
 // ===========================================================================
@@ -543,7 +524,6 @@ fn test_raw_f64_underflow_boundaries_never_alias_to_zero() {
         );
     }
 
-    #[cfg(not(feature = "non-zero"))]
     {
         let zero = Positive::ZERO;
         for tiny in [1e-100_f64, f64::MIN_POSITIVE] {

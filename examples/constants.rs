@@ -15,7 +15,6 @@ fn main() {
 
     // Integer constants (0-10)
     println!("--- Integer Constants (0-10) ---");
-    #[cfg(not(feature = "non-zero"))]
     println!("ZERO     = {}", ZERO);
     println!("ONE      = {}", ONE);
     println!("TWO      = {}", TWO);
@@ -81,7 +80,6 @@ fn main() {
 
     // Constants are also available via Positive::CONSTANT
     println!("\n--- Alternative Access via Positive::CONSTANT ---");
-    #[cfg(not(feature = "non-zero"))]
     println!("Positive::ZERO = {}", Positive::ZERO);
     println!("Positive::PI   = {}", Positive::PI);
     println!("Positive::E    = {}", Positive::E);

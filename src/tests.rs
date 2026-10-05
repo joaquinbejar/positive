@@ -83,7 +83,6 @@ macro_rules! assert_pos_relative_eq {
 
 #[cfg(test)]
 mod tests_assert_positivef64_relative_eq {
-    #[cfg(not(feature = "non-zero"))]
     use crate::Positive;
 
     #[test]
@@ -102,7 +101,6 @@ mod tests_assert_positivef64_relative_eq {
         assert_pos_relative_eq!(a, b, epsilon);
     }
 
-    #[cfg(not(feature = "non-zero"))]
     #[test]
     fn test_zero_values() {
         let a = Positive::ZERO;
@@ -111,7 +109,6 @@ mod tests_assert_positivef64_relative_eq {
         assert_pos_relative_eq!(a, b, epsilon);
     }
 
-    #[cfg(not(feature = "non-zero"))]
     #[test]
     fn test_zero_and_small_value() {
         let a = Positive::ZERO;
@@ -162,7 +159,6 @@ mod tests_assert_positivef64_relative_eq {
         assert_pos_relative_eq!(a, b, epsilon);
     }
 
-    #[cfg(not(feature = "non-zero"))]
     #[test]
     #[should_panic(expected = "assertion failed")]
     fn test_zero_and_large_value() {

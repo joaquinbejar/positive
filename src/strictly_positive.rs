@@ -7,8 +7,7 @@
 //! The [`StrictlyPositive`] type: a decimal that is always greater than zero.
 //!
 //! `StrictlyPositive` sits next to [`Positive`] rather than replacing it, so a
-//! crate can hold both `> 0` and `>= 0` values at once. Its invariant does not
-//! depend on any feature flag.
+//! crate can hold both `> 0` and `>= 0` values at once.
 //!
 //! # Design
 //!
@@ -23,7 +22,7 @@
 //! A value that is zero or negative is reported as
 //! [`PositiveError::OutOfBounds`] whose `min` is [`StrictlyPositive::MIN`]
 //! (`1e-28`, the smallest strictly positive `Decimal`) and whose `max` is
-//! `Decimal::MAX`. The bounds are the same under every feature configuration.
+//! `Decimal::MAX`, not the `0` minimum that [`Positive`] reports.
 
 use crate::error::PositiveError;
 use crate::positive::{
@@ -41,10 +40,10 @@ use std::str::FromStr;
 
 /// A decimal value that is guaranteed to be strictly greater than zero.
 ///
-/// Unlike [`Positive`], whose meaning changes with the deprecated `non-zero`
-/// feature, `StrictlyPositive` always means `> 0`. Use it for quantities where
-/// zero is as invalid as a negative number, such as prices, divisors or
-/// volatilities, and keep `Positive` for quantities that may be zero.
+/// Where [`Positive`] means `>= 0`, `StrictlyPositive` means `> 0`. Use it for
+/// quantities where zero is as invalid as a negative number, such as prices,
+/// divisors or volatilities, and keep `Positive` for quantities that may be
+/// zero.
 ///
 /// # Examples
 ///
@@ -155,8 +154,8 @@ impl StrictlyPositive {
     /// compile time.
     ///
     /// Crate-private on purpose: every caller passes a literal that is
-    /// strictly positive, which satisfies the `Positive` invariant under every
-    /// feature configuration as well as this type's own.
+    /// strictly positive, which satisfies the `Positive` invariant as well as
+    /// this type's own.
     #[inline]
     #[must_use]
     const fn from_decimal_const(value: Decimal) -> Self {
@@ -178,10 +177,11 @@ impl StrictlyPositive {
 
     /// Lifts the result of a `Positive` operation into a `StrictlyPositive`.
     ///
-    /// An `OutOfBounds` error from `Positive` is re-reported with this type's
-    /// bounds, so the error a caller sees does not depend on the `non-zero`
-    /// feature. Every other error passes through unchanged. `Deserialize`
-    /// cannot use this (serde errors are opaque), see its docs.
+    /// An `OutOfBounds` error from `Positive` (whose minimum is `0`) is
+    /// re-reported with this type's bounds (minimum `1e-28`), so the caller
+    /// sees the bounds of the type it asked for. Every other error passes
+    /// through unchanged. `Deserialize` cannot use this (serde errors are
+    /// opaque), see its docs.
     #[inline]
     fn lift(result: Result<Positive, PositiveError>) -> Result<Self, PositiveError> {
         match result {
@@ -1149,10 +1149,10 @@ impl<'de> Deserialize<'de> for StrictlyPositive {
     ///
     /// # Errors
     ///
-    /// Fails when the input is not a valid decimal, or is zero or negative,
-    /// under every feature configuration. A negative input is rejected by
-    /// [`Positive`]'s deserializer, so its message reports `Positive`'s
-    /// bounds for the active feature configuration.
+    /// Fails when the input is not a valid decimal, or is zero or negative. A
+    /// negative input is rejected by [`Positive`]'s deserializer, so its
+    /// message reports `Positive`'s bounds (minimum `0`) rather than this
+    /// type's.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -1552,9 +1552,8 @@ impl Sub for StrictlyPositive {
     ///
     /// # Panics
     ///
-    /// Same as `Positive - Positive`: panics when the difference is negative,
-    /// or zero under the deprecated `non-zero` feature. See
-    /// [`Positive::checked_sub`], or [`StrictlyPositive::checked_sub`] to
+    /// Same as `Positive - Positive`: panics when the difference is negative.
+    /// See [`Positive::checked_sub`], or [`StrictlyPositive::checked_sub`] to
     /// require a strictly positive difference.
     #[inline]
     fn sub(self, rhs: StrictlyPositive) -> Positive {

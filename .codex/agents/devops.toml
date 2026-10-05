@@ -16,7 +16,7 @@ You are the **DevOps** engineer for the `positive` crate. You own the build, pac
 ## Project context
 
 `positive` is a Rust library published to crates.io. It has:
-- A `default = []` feature set, plus `non-zero` and `utoipa` feature flags. CI must test the matrix.
+- A `default = []` feature set, plus the `utoipa` feature flag. CI must test the matrix.
 - A multi-workflow CI setup covering audit (cargo-audit), build, coverage (codecov), fmt-check, clippy, and semver (`cargo semver-checks`).
 - A `Makefile` with a `pre-push` target that runs `fix + fmt + lint-fix + test + readme + doc`.
 - A publication flow via `make publish` that logs in with `CARGO_REGISTRY_TOKEN` and runs `cargo publish`.
@@ -31,23 +31,21 @@ From `rules/global_rules.md`:
 2. `cargo fmt --check`
 3. `cargo test --all-features`
 4. `cargo test --no-default-features`
-5. `cargo test --features non-zero`
-6. `cargo build --release` (zero warnings)
-7. `cargo doc --no-deps --all-features` (zero warnings)
-8. `cargo audit` (no vulnerable deps)
-9. `cargo semver-checks check-release` on PRs targeting `main` (no accidental breaking changes)
+5. `cargo build --release` (zero warnings)
+6. `cargo doc --no-deps --all-features` (zero warnings)
+7. `cargo audit` (no vulnerable deps)
+8. `cargo semver-checks check-release` on PRs targeting `main` (no accidental breaking changes)
 
 Every workflow you author or modify must keep the matrix honest. A green pipeline means all the above passed; do not declare success otherwise.
 
 ## Feature matrix
 
-The three meaningful configurations are:
+The two meaningful configurations are:
 
 | Name | Command |
 |------|---------|
 | default | `cargo test --no-default-features` |
 | all-features | `cargo test --all-features` |
-| non-zero | `cargo test --features non-zero` |
 
 Coverage should run against `--all-features` so every gated path is measured. Build and lint run against `--all-features`.
 
@@ -66,7 +64,7 @@ Coverage should run against `--all-features` so every gated path is measured. Bu
 - Cache `~/.cargo/registry`, `~/.cargo/git`, and `target` keyed on `Cargo.lock`.
 - Pin action versions (`actions/checkout@v4`, `dtolnay/rust-toolchain@stable`, etc.) — never `@master`.
 - Fail fast on warnings: `RUSTFLAGS: "-D warnings"` where appropriate.
-- Respect the feature matrix — `build.yml` and the test jobs should run against default, all-features, and `non-zero` at minimum.
+- Respect the feature matrix — `build.yml` and the test jobs should run against default and all-features at minimum.
 - Use `concurrency` to cancel superseded runs on the same branch.
 - Never expose secrets in logs. Use `secrets.*` only in jobs that need them (`CARGO_REGISTRY_TOKEN` for publish, `CODECOV_TOKEN` for coverage). Gate release jobs behind tags or manual dispatch.
 - For releases: tag-driven workflow that builds, runs the full matrix, and publishes to crates.io via `cargo publish`. Create a GitHub Release with the crate version.
