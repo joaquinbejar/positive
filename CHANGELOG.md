@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-05
+
+### Added
+- `StrictlyPositive`: a decimal type that is always strictly greater than
+  zero, available next to `Positive` (>= 0) under every feature
+  configuration, so both can be used in the same crate (#124, reported in
+  #122). It is a `#[repr(transparent)]` newtype over `Positive`; every
+  operation delegates to `Positive` and re-checks the strict invariant.
+  - Constructors `new(f64)` and `new_decimal(Decimal)`, plus `TryFrom` from
+    `Positive`, `Decimal`, `&Decimal`, `f64`, `i64`, `u64`, `usize` and
+    `FromStr`. Zero or negative input fails with `PositiveError::OutOfBounds`
+    whose `min` is `StrictlyPositive::MIN` (`1e-28`). No new error variant.
+  - Infallible conversions into `Positive`, `Decimal` and `f64`; fallible
+    ones into `u64`, `i64` and `usize`.
+  - Arithmetic: `S + S`, `S + P`, `P + S` -> `S`; `S * S`, `S / S` -> `S`
+    (with `checked_mul`/`checked_div` reporting underflow to zero);
+    `S * P`, `P * S`, `S / P`, `P / S` -> `Positive`; `S - S` -> `Positive`,
+    with `checked_sub` returning `Result<StrictlyPositive, _>`. Every
+    operator yielding `S` has a `checked_*` form. `checked_sum` replaces
+    `Sum`, which cannot be sound because an empty sum is zero.
+  - Maths: `sqrt`, `ln`, `log10` (no zero edge case), `exp`, `powi`, `powu`,
+    `pow`, `floor`, `ceiling`, `round`, `round_to`, `min`, `max`, `clamp`,
+    each with a `checked_*` form where it can fail.
+  - Constants `MIN`, `MAX`, `ONE` to `TEN`, `HUNDRED`, `THOUSAND`, `PI`, `E`.
+  - Comparisons with `Positive`, `Decimal` and `f64` in both directions;
+    `approx` support; `Display`/`Debug` identical to `Positive`.
+  - Serde with the same exact decimal string wire format as `Positive`;
+    deserialising `0` fails in every feature configuration.
+  - `utoipa::ToSchema` behind the `utoipa` feature.
+- `strict_pos!` (returns `Result`) and `strict_pos_or_panic!` macros, both
+  exported from the prelude together with `StrictlyPositive`.
+- `examples/strictly_positive.rs` and `tests/strictly_positive_tests.rs`.
+
+### Deprecated
+- The `non-zero` feature. It changes the meaning of `Positive` instead of
+  adding a type, so it is not additive: Cargo feature unification lets any
+  dependency silently turn every `Positive` in the build into a strictly
+  positive value. Migrate by dropping the feature and using
+  `StrictlyPositive` where `> 0` is required. The feature will be removed in
+  a future minor release.
+
 ## [0.7.0] - 2026-10-01
 
 ### Changed
