@@ -82,11 +82,10 @@ jobs:
   # Minimum supported Rust version. `rust-version` in Cargo.toml is a promise
   # to consumers, so it is verified rather than asserted.
   #
-  # The library only: `cargo test` additionally pulls in criterion, which
-  # requires 1.86 and is a dev-dependency, so it does not constrain anyone
-  # depending on this crate.
+  # The library only: dev-dependencies such as criterion do not constrain
+  # anyone depending on this crate. 1.88 is required by utoipa 6.
   msrv:
-    name: msrv (1.85, library)
+    name: msrv (1.88, library)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -98,7 +97,7 @@ jobs:
         # such as `1.14` hardcode that Rust release and reject a `toolchain` input)
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
-          toolchain: '1.85'
+          toolchain: '1.88'
 
       - name: Cache Rust dependencies
         # actions/cache v6.1.0
@@ -109,25 +108,25 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-msrv-1.85-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-msrv-1.88-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-msrv-1.85-
+            ${{ runner.os }}-msrv-1.88-
 
-      # `+1.85` overrides rust-toolchain.toml, which pins `stable` for local
+      # `+1.88` overrides rust-toolchain.toml, which pins `stable` for local
       # development; without it cargo would silently use stable here and the
       # job would prove nothing.
       # Printed and asserted, not assumed. rust-toolchain.toml pins `stable`
       # for local development and silently overrides whatever the runner has
-      # installed, so without the `+1.85` override and this check the job
+      # installed, so without the `+1.88` override and this check the job
       # would go green while compiling on stable and proving nothing.
-      - name: Confirm the toolchain really is 1.85
+      - name: Confirm the toolchain really is 1.88
         run: |
-          rustc +1.85 --version
-          rustc +1.85 --version | grep -q '^rustc 1\.85\.' \
-            || { echo "MSRV job is not running on 1.85"; exit 1; }
+          rustc +1.88 --version
+          rustc +1.88 --version | grep -q '^rustc 1\.88\.' \
+            || { echo "MSRV job is not running on 1.88"; exit 1; }
 
       - name: Check the library at MSRV, in every feature configuration
         run: |
-          cargo +1.85 check --lib --all-features
-          cargo +1.85 check --lib --no-default-features
-          cargo +1.85 check --lib --features non-zero
+          cargo +1.88 check --lib --all-features
+          cargo +1.88 check --lib --no-default-features
+          cargo +1.88 check --lib --features non-zero

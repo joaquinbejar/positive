@@ -25,7 +25,7 @@ env:
   RUSTUP_MAX_RETRIES: 3
   # Pinned so a coverage run is reproducible and so the cache key below has
   # something stable to key on. Bump both together.
-  TARPAULIN_VERSION: '0.37.0'
+  TARPAULIN_VERSION: '0.37.5'
 
 jobs:
   code_coverage_report:
@@ -81,7 +81,7 @@ jobs:
       - name: Generate code coverage report
         run: >
           cargo tarpaulin --color Always --engine llvm --verbose --tests
-          --all-targets --all-features --workspace --timeout 0 --out Xml
+          --all-targets --all-features --workspace --timeout 600 --out Xml
 
       - name: Upload coverage reports to Codecov.io
         # codecov/codecov-action v5.5.5
