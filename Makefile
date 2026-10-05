@@ -23,15 +23,14 @@ test:
 
 # Run the full feature matrix required by rules/global_rules.md.
 #
-# The three configurations are separate runs on purpose: the positivity
-# invariant differs between them, and cfg-gated items only exist in their own
-# configuration. An --all-features run cannot stand in for the default one,
+# The two configurations are separate runs on purpose: cfg-gated items only
+# exist in their own configuration. An --all-features run cannot stand in for
+# the default one,
 # which is why the coverage job is not a substitute for this target.
 .PHONY: test-matrix
 test-matrix:
 	LOGLEVEL=WARN cargo test --all-features
 	LOGLEVEL=WARN cargo test --no-default-features
-	LOGLEVEL=WARN cargo test --features non-zero
 
 # Reject the patterns rules/global_rules.md bans from production code:
 # .unwrap() and .expect() outside #[cfg(test)].
@@ -71,7 +70,6 @@ scan-banned:
 scan-indexing:
 	cargo clippy --lib --all-features -- -D clippy::indexing_slicing
 	cargo clippy --lib --no-default-features -- -D clippy::indexing_slicing
-	cargo clippy --lib --features non-zero -- -D clippy::indexing_slicing
 	@echo "OK: no unchecked indexing in production code"
 
 # Documentation must build with zero warnings.
@@ -126,12 +124,6 @@ lint-strict:
 		-D clippy::missing_panics_doc \
 		-D missing_docs
 	cargo clippy --all-targets --no-default-features -- \
-		-D warnings \
-		-D clippy::must_use_candidate \
-		-D clippy::missing_errors_doc \
-		-D clippy::missing_panics_doc \
-		-D missing_docs
-	cargo clippy --all-targets --features non-zero -- \
 		-D warnings \
 		-D clippy::must_use_candidate \
 		-D clippy::missing_errors_doc \

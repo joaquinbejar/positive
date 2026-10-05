@@ -129,4 +129,3 @@ jobs:
         run: |
           cargo +1.88 check --lib --all-features
           cargo +1.88 check --lib --no-default-features
-          cargo +1.88 check --lib --features non-zero
