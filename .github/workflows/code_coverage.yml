@@ -86,7 +86,10 @@ jobs:
       - name: Upload coverage reports to Codecov.io
         # codecov/codecov-action v5.5.5
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        # Dependabot PRs do not receive Actions secrets, so CODECOV_TOKEN is
+        # empty and Codecov rejects the upload on the protected branch. Keep
+        # the upload strict for everyone else.
         with:
-          fail_ci_if_error: true
+          fail_ci_if_error: ${{ github.actor != 'dependabot[bot]' }}
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
