@@ -31,7 +31,7 @@ jobs:
       - name: Install Rust
         # dtolnay/rust-toolchain master (the generic action; the version branches
         # such as `1.14` hardcode that Rust release and reject a `toolchain` input)
-        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         id: toolchain
         with:
           toolchain: stable
