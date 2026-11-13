@@ -30,7 +30,6 @@ If you have any questions, issues, or would like to provide feedback, please fee
 
 
 ### **Contact Information**
-
 - **Author**: Joaquín Béjar García
 - **Email**: jb@taunais.com
 - **Telegram**: [@joaquin_bejar](https://t.me/joaquin_bejar)
@@ -52,10 +51,10 @@ Repositories by the same author that this project depends on, and repositories t
 
 | Repository | Description |
 |------------|-------------|
-| [ExpirationDate](https://github.com/joaquinbejar/ExpirationDate) · [crates.io](https://crates.io/crates/expiration_date) | Financial instrument expiration dates: parsing, arithmetic and time-to-expiry helpers. |
-| [IronCondor](https://github.com/joaquinbejar/IronCondor) | Backtesting engine for options strategies with order-book-level fill simulation. *(dev-dependency)* |
-| [option_type](https://github.com/joaquinbejar/option_type) · [crates.io](https://crates.io/crates/option_type) | Enum-based classification of vanilla and exotic option contracts. |
-| [OptionChain-Simulator](https://github.com/joaquinbejar/OptionChain-Simulator) | RESTful simulator for option chains that evolve over time with each request. |
-| [OptionStratLib](https://github.com/joaquinbejar/OptionStratLib) · [crates.io](https://crates.io/crates/optionstratlib) | Options pricing, Greeks, strategies and simulation library. |
+| [ExpirationDate](https://github.com/joaquinbejar/ExpirationDate) | Financial instrument expiration dates; uses positive for day counts and time-to-expiry values. |
+| [IronCondor](https://github.com/joaquinbejar/IronCondor) | Options strategy backtester with order-book-level fill simulation; uses positive for prices and quantities. |
+| [OptionChain-Simulator](https://github.com/joaquinbejar/OptionChain-Simulator) | RESTful option chain simulator; uses positive for prices, strikes and volatilities. |
+| [OptionStratLib](https://github.com/joaquinbejar/OptionStratLib) | Options trading and strategy library; uses positive as its core non-negative numeric type. |
+| [option_type](https://github.com/joaquinbejar/option_type) | Classification of vanilla and exotic option contracts; uses positive for strikes and other option parameters. |
 
 <!-- related-projects:end -->
